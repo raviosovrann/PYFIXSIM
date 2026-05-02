@@ -1,0 +1,32 @@
+# Logs
+*.log
+logs/
+
+# Virtual environment
+.venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Build / packaging
+dist/
+build/
+*.egg-info/
+
+# VS Code (machine-local editor config)
+.vscode/
+
+# Local session config — commit session.cfg.example instead
+src/config/session.cfg

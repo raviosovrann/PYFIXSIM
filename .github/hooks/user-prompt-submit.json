@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": ".github/scripts/inject-fix-context.sh",
+        "linux": ".github/scripts/inject-fix-context.sh",
+        "timeout": 10
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+[SESSION]
+Host=127.0.0.1
+Port=9876
+SenderCompID=CLIENT
+TargetCompID=SERVER
+HeartBtInt=30
+ReconnectAttempts=10
+FixVersion=FIX.4.2
