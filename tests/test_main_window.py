@@ -1,0 +1,202 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialogButtonBox,
+    QLineEdit,
+    QListWidget,
+    QMenu,
+)
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.ui.main_window import MainWindow
+from src.ui.create_session_dialog import CreateSessionDialog
+
+
+def _find_menu_action(window: MainWindow, menu_title: str, action_text: str) -> QAction:
+    for top_level_action in window.menuBar().actions():
+        if top_level_action.text() != menu_title:
+            continue
+
+        menu = top_level_action.menu()
+        if not isinstance(menu, QMenu):
+            break
+
+        for action in menu.actions():
+            if action.text() == action_text:
+                return action
+
+    raise AssertionError(f"Action {action_text!r} was not found in menu {menu_title!r}")
+
+
+def test_main_window_widget_interactions(qapp: QApplication) -> None:
+    window = MainWindow()
+    window.show()
+    qapp.processEvents()
+
+    assert window.windowTitle() == "FIXSIM — FIX Client Simulator"
+    assert window.centralWidget() is not None
+
+    menu_titles = [action.text() for action in window.menuBar().actions()]
+    assert menu_titles == ["Session", "Message", "Events Viewer", "Options", "Help"]
+
+    tab_titles = [
+        window.workspace_tabs.tabText(index) for index in range(window.workspace_tabs.count())
+    ]
+    assert tab_titles == ["Send Message", "Replay", "Test Scenarios"]
+
+    assert window.application_state_label.text() == "Application: Ready"
+    assert window.session_state_label.text() == "Session: No session selected"
+    assert window.statusBar().currentMessage() == "FIX Client Simulator is ready"
+
+    timestamp_checkbox = window.findChild(QCheckBox, "eventsViewerTimestampCheckbox")
+    assert timestamp_checkbox is not None
+    assert timestamp_checkbox.isChecked() is True
+
+    QTest.mouseClick(timestamp_checkbox, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+    assert timestamp_checkbox.isChecked() is False
+
+    QTest.mouseClick(timestamp_checkbox, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+    assert timestamp_checkbox.isChecked() is True
+
+    QTest.keyClicks(window.filter_events_edit, "ExecReport")
+    qapp.processEvents()
+    assert window.filter_events_edit.text() == "ExecReport"
+
+    window.close()
+
+
+def test_main_window_updates_session_state_and_menu_driven_behaviour(
+    qapp: QApplication,
+) -> None:
+    window = MainWindow()
+    window.show()
+    qapp.processEvents()
+
+    list_widget = window.findChild(QListWidget, "sessionList")
+    assert list_widget is not None
+
+    first_item = list_widget.item(0)
+    second_item = list_widget.item(1)
+
+    first_item.setSelected(True)
+    qapp.processEvents()
+    assert window.session_state_label.text() == "Session: CLIENT_A->BROKER_A"
+
+    second_item.setSelected(True)
+    qapp.processEvents()
+    assert window.session_state_label.text() == "Session: CLIENT_A->BROKER_A (+1 more)"
+
+    list_widget.clearSelection()
+    qapp.processEvents()
+    assert window.session_state_label.text() == "Session: No session selected"
+
+    multiline_action = _find_menu_action(
+        window,
+        "Options",
+        "Multiline session information",
+    )
+    assert multiline_action.isChecked() is True
+    multiline_action.trigger()
+    qapp.processEvents()
+    assert window.session_list_widget.is_multiline_mode() is False
+    assert multiline_action.isChecked() is False
+
+    multiline_action.trigger()
+    qapp.processEvents()
+    assert window.session_list_widget.is_multiline_mode() is True
+    assert multiline_action.isChecked() is True
+
+    clear_events_calls: list[bool] = []
+    refresh_calls: list[bool] = []
+    auto_scroll_values: list[bool] = []
+
+    window.clear_events_requested.connect(lambda: clear_events_calls.append(True))
+    window.refresh_sessions_requested.connect(lambda: refresh_calls.append(True))
+    window.auto_scroll_toggled.connect(auto_scroll_values.append)
+
+    refresh_action = _find_menu_action(window, "Session", "Refresh")
+    refresh_action.trigger()
+    qapp.processEvents()
+    assert refresh_calls == [True]
+
+    clear_action = _find_menu_action(window, "Events Viewer", "Clear event viewer")
+    clear_action.trigger()
+    qapp.processEvents()
+    assert clear_events_calls == [True]
+    assert window.events_viewer.toPlainText() == ""
+
+    auto_scroll_action = _find_menu_action(window, "Events Viewer", "Auto scroll")
+    assert auto_scroll_action.isChecked() is True
+    auto_scroll_action.trigger()
+    qapp.processEvents()
+    assert auto_scroll_values == [False]
+    assert auto_scroll_action.isChecked() is False
+    assert window.events_viewer_panel.is_auto_scroll_enabled() is False
+
+    window.close()
+
+
+def test_main_window_opens_create_session_dialog_and_adds_session(
+    qapp: QApplication,
+) -> None:
+    window = MainWindow()
+    window.show()
+    qapp.processEvents()
+
+    list_widget = window.findChild(QListWidget, "sessionList")
+    assert list_widget is not None
+    initial_count = list_widget.count()
+
+    create_session_action = _find_menu_action(window, "Session", "Create new FIX Session...")
+    create_session_action.trigger()
+    qapp.processEvents()
+
+    dialog = window.findChild(CreateSessionDialog)
+    assert dialog is not None
+    assert dialog.isVisible() is True
+
+    sender_comp_id_edit = dialog.findChild(QLineEdit, "senderCompIdEdit")
+    target_comp_id_edit = dialog.findChild(QLineEdit, "targetCompIdEdit")
+    remote_host_edit = dialog.findChild(QLineEdit, "remoteHostEdit")
+    button_box = dialog.findChild(QDialogButtonBox, "createSessionDialogButtonBox")
+    session_combo = window.findChild(QComboBox, "sendMessageSessionCombo")
+
+    assert sender_comp_id_edit is not None
+    assert target_comp_id_edit is not None
+    assert remote_host_edit is not None
+    assert button_box is not None
+    assert session_combo is not None
+
+    QTest.keyClicks(sender_comp_id_edit, "ALGO_DESK")
+    QTest.keyClicks(target_comp_id_edit, "EXEC_BROKER")
+    QTest.keyClicks(remote_host_edit, "10.0.0.55")
+    qapp.processEvents()
+
+    ok_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
+    assert ok_button is not None
+
+    QTest.mouseClick(ok_button, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+
+    assert list_widget.count() == initial_count + 1
+    assert window.session_state_label.text() == "Session: ALGO_DESK->EXEC_BROKER"
+    assert window.application_state_label.text() == "Application: Session created"
+    assert "New session was created" in window.statusBar().currentMessage()
+    assert "ALGO_DESK->EXEC_BROKER" in window.events_viewer.toPlainText()
+    assert session_combo.currentText() == "ALGO_DESK->EXEC_BROKER"
+
+    window.close()

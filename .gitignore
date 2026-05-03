@@ -28,5 +28,17 @@ build/
 # VS Code (machine-local editor config)
 .vscode/
 
+# Local-only third-party UI reference material
+ui-requirements.md
+assets/
+
 # Local session config — commit session.cfg.example instead
 src/config/session.cfg
+
+# Agents, hooks, instructions, and prompts need to be ignored
+.github/agents/
+.github/hooks/
+.github/instructions/
+.github/prompts/
+.github/scripts/
+.github/copilot-instructions.md
