@@ -1,0 +1,76 @@
+name: Test
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Detect modified Python directories
+        id: changed_python
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          before_sha="${{ github.event.before }}"
+          zero_sha="0000000000000000000000000000000000000000"
+
+          if [[ "$before_sha" == "$zero_sha" ]]; then
+            changed_files="$(git ls-files '*.py')"
+          else
+            changed_files="$(git diff --name-only "$before_sha" "$GITHUB_SHA" -- '*.py')"
+          fi
+
+          if [[ -z "$changed_files" ]]; then
+            echo "dirs=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          dirs="$(printf '%s\n' "$changed_files" | xargs -n1 dirname | sort -u | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
+          echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+
+      - name: Run mypy on modified Python directories
+        if: steps.changed_python.outputs.dirs != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m mypy ${{ steps.changed_python.outputs.dirs }}
+
+      - name: Run bandit on modified Python directories
+        if: steps.changed_python.outputs.dirs != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for dir in ${{ steps.changed_python.outputs.dirs }}; do
+            if [[ "$dir" == tests* ]]; then
+              python -m bandit -r -s B101 "$dir"
+            else
+              python -m bandit -r "$dir"
+            fi
+          done
+
+      - name: Run full test suite
+        run: python -m pytest tests -q

@@ -125,10 +125,53 @@ class _SessionRowWidget(QWidget):
 		root_layout.addWidget(self._indicator_label, 0, Qt.AlignmentFlag.AlignTop)
 		root_layout.addLayout(text_layout, 1)
 
+	def _get_indicator_label(self) -> QLabel:
+		"""Return the state-indicator label, recovering it after wrapper recreation."""
+		indicator_label = getattr(self, "_indicator_label", None)
+		if isinstance(indicator_label, QLabel):
+			return indicator_label
+
+		indicator_label = self.findChild(QLabel, "sessionRowIndicator")
+		if indicator_label is None:
+			raise RuntimeError("Session row indicator label is not available")
+
+		self._indicator_label = indicator_label
+		return indicator_label
+
+	def _get_primary_label(self) -> QLabel:
+		"""Return the primary summary label, recovering it after wrapper recreation."""
+		primary_label = getattr(self, "_primary_label", None)
+		if isinstance(primary_label, QLabel):
+			return primary_label
+
+		primary_label = self.findChild(QLabel, "sessionRowPrimaryLabel")
+		if primary_label is None:
+			raise RuntimeError("Session row primary label is not available")
+
+		self._primary_label = primary_label
+		return primary_label
+
+	def _get_secondary_label(self) -> QLabel:
+		"""Return the secondary summary label, recovering it after wrapper recreation."""
+		secondary_label = getattr(self, "_secondary_label", None)
+		if isinstance(secondary_label, QLabel):
+			return secondary_label
+
+		secondary_label = self.findChild(QLabel, "sessionRowSecondaryLabel")
+		if secondary_label is None:
+			raise RuntimeError("Session row secondary label is not available")
+
+		self._secondary_label = secondary_label
+		return secondary_label
+
 	def set_entry(self, entry: SessionListEntry, multiline: bool) -> None:
 		"""Update the row contents for the supplied session entry."""
-		self._indicator_label.setProperty("sessionIndicator", entry.state_category)
-		_repolish(self._indicator_label)
+		indicator_label = self._get_indicator_label()
+		primary_label = self._get_primary_label()
+		secondary_label = self._get_secondary_label()
+
+		indicator_label.setProperty("sessionIndicator", entry.state_category)
+		_repolish(indicator_label)
 
 		primary_text = (
 			f"{entry.fix_version} {entry.role} | "
@@ -140,12 +183,12 @@ class _SessionRowWidget(QWidget):
 		)
 
 		if multiline:
-			self._primary_label.setText(primary_text)
-			self._secondary_label.setText(secondary_text)
-			self._secondary_label.show()
+			primary_label.setText(primary_text)
+			secondary_label.setText(secondary_text)
+			secondary_label.show()
 		else:
-			self._primary_label.setText(f"{primary_text} | {secondary_text}")
-			self._secondary_label.hide()
+			primary_label.setText(f"{primary_text} | {secondary_text}")
+			secondary_label.hide()
 
 		self.updateGeometry()
 
@@ -291,7 +334,10 @@ class SessionListWidget(QGroupBox):
 		self._close_action.setObjectName("sessionCloseAction")
 		self._close_action.triggered.connect(self._on_close_session_requested)
 
-	def _refresh_item_widget(self, item: QListWidgetItem) -> None:
+	def _refresh_item_widget(self, item: QListWidgetItem | None) -> None:
+		if item is None:
+			return
+
 		session_id = item.data(Qt.ItemDataRole.UserRole)
 		if not isinstance(session_id, str):
 			return

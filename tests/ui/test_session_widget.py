@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
@@ -12,11 +9,7 @@ from PySide6.QtWidgets import (
     QListWidget,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.ui.session_widget import SessionListWidget
+from src.ui.session_widget import SessionListEntry, SessionListWidget, _SessionRowWidget
 
 
 def _find_action(widget: SessionListWidget, object_name: str) -> QAction:
@@ -166,3 +159,46 @@ def test_session_list_widget_emits_all_non_modal_action_signals(qapp: QApplicati
     assert close_calls == [True]
 
     widget.close()
+
+
+def test_session_row_widget_recovers_cached_labels_after_python_attribute_loss(
+    qapp: QApplication,
+) -> None:
+    row_widget = _SessionRowWidget()
+    row_widget.show()
+    qapp.processEvents()
+
+    del row_widget._indicator_label
+    del row_widget._primary_label
+    del row_widget._secondary_label
+
+    row_widget.set_entry(
+        SessionListEntry(
+            session_id="BUY_SIDE->SELL_SIDE",
+            fix_version="FIX.4.4",
+            role="Initiator",
+            sender_comp_id="BUY_SIDE",
+            target_comp_id="SELL_SIDE",
+            lifecycle_state="CONNECTED",
+            host="127.0.0.1",
+            port=9878,
+            in_seq_num=2,
+            out_seq_num=3,
+            state_category="connected",
+        ),
+        multiline=True,
+    )
+    qapp.processEvents()
+
+    indicator_label = row_widget.findChild(QLabel, "sessionRowIndicator")
+    primary_label = row_widget.findChild(QLabel, "sessionRowPrimaryLabel")
+    secondary_label = row_widget.findChild(QLabel, "sessionRowSecondaryLabel")
+
+    assert indicator_label is not None
+    assert primary_label is not None
+    assert secondary_label is not None
+    assert indicator_label.property("sessionIndicator") == "connected"
+    assert "BUY_SIDE -> SELL_SIDE" in primary_label.text()
+    assert secondary_label.text() == "CONNECTED | 127.0.0.1:9878 | In:2 Out:3"
+
+    row_widget.close()

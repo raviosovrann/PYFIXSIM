@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: main
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: main
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci

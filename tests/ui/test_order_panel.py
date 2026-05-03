@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit, QPlainTextEdit, QPushButton
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.ui.order_panel import SendMessageTab
 

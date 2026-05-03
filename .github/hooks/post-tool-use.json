@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": ".github/scripts/lint-changed-files.sh",
+        "linux": ".github/scripts/lint-changed-files.sh",
+        "timeout": 30
+      }
+    ]
+  }
+}
