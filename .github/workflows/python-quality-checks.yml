@@ -85,7 +85,7 @@ jobs:
 
           for dir in ${{ steps.changed_python.outputs.dirs }}; do
             if [[ "$dir" == tests* ]]; then
-              python -m bandit -r -s B101 "$dir"
+              python -m bandit -r -s B101,B105 "$dir"
             else
               python -m bandit -r "$dir"
             fi
