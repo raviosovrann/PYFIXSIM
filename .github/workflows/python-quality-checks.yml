@@ -1,4 +1,4 @@
-name: Test
+name: Python Quality Checks
 
 on:
   push:
