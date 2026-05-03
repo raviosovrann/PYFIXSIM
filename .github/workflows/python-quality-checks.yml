@@ -67,7 +67,30 @@ jobs:
             exit 0
           fi
 
-          dirs="$(printf '%s\n' "$changed_files" | xargs -n1 dirname | sort -u | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
+          dirs="$({
+            printf '%s\n' "$changed_files" \
+              | xargs -n1 dirname \
+              | sort -u \
+              | awk '
+                  BEGIN {
+                    count = 0
+                  }
+                  {
+                    for (i = 1; i <= count; i++) {
+                      if ($0 == kept[i] || index($0, kept[i] "/") == 1) {
+                        next
+                      }
+                    }
+
+                    kept[++count] = $0
+                  }
+                  END {
+                    for (i = 1; i <= count; i++) {
+                      print kept[i]
+                    }
+                  }
+                '
+          } | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
           echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
 
       - name: Run mypy on modified Python directories
