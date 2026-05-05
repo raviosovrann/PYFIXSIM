@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction
@@ -29,31 +31,62 @@ from src.ui.order_panel import SendMessageTab
 from src.ui.session_widget import SessionListEntry, SessionListWidget
 from src.ui.theme import get_app_stylesheet
 
+if TYPE_CHECKING:
+    from src.config.session_config import SessionConfig
+    from src.engine.service import FIXEngineService
+
 
 class MainWindow(QMainWindow):
     """Main application shell for the FIX Client Simulator UI."""
 
-    create_fix_session_requested = Signal()  # emitted when Session -> Create new FIX Session... is chosen
-    create_kafka_session_requested = Signal()  # emitted when Session -> Create new Kafka Session... is chosen
+    create_fix_session_requested = (
+        Signal()
+    )  # emitted when Session -> Create new FIX Session... is chosen
+    create_kafka_session_requested = (
+        Signal()
+    )  # emitted when Session -> Create new Kafka Session... is chosen
     start_session_requested = Signal()  # emitted when Session -> Start is chosen
     stop_session_requested = Signal()  # emitted when Session -> Stop is chosen
     restart_session_requested = Signal()  # emitted when Session -> Restart is chosen
-    show_session_messages_requested = Signal()  # emitted when session message visibility is toggled from menus
+    show_session_messages_requested = (
+        Signal()
+    )  # emitted when session message visibility is toggled from menus
     close_session_requested = Signal()  # emitted when Session -> Close is chosen
-    close_all_sessions_requested = Signal()  # emitted when Session -> Close all is chosen
-    refresh_sessions_requested = Signal()  # emitted when the user requests a session refresh
-    session_created = Signal(dict)  # emitted when a new session configuration is submitted
+    close_all_sessions_requested = (
+        Signal()
+    )  # emitted when Session -> Close all is chosen
+    refresh_sessions_requested = (
+        Signal()
+    )  # emitted when the user requests a session refresh
+    session_created = Signal(
+        dict
+    )  # emitted when a new session configuration is submitted
     create_message_requested = Signal()  # emitted when Message -> Create... is chosen
     load_message_requested = Signal()  # emitted when Message -> Load... is chosen
     save_message_requested = Signal()  # emitted when Message -> Save... is chosen
     edit_message_requested = Signal()  # emitted when Message -> Edit... is chosen
-    send_current_message_requested = Signal()  # emitted when Message -> Send current message is chosen
+    send_current_message_requested = (
+        Signal()
+    )  # emitted when Message -> Send current message is chosen
+    send_selected_messages_requested = Signal()  # emitted when Send selected is chosen
     send_batch_requested = Signal()  # emitted when Message -> Send batch... is chosen
-    clear_events_requested = Signal()  # emitted when the Events Viewer should be cleared
-    auto_scroll_toggled = Signal(bool)  # emitted when the Events Viewer auto-scroll changes
-    keep_logs_toggled = Signal(bool)  # emitted when the Events Viewer keep-logs setting changes
+    clear_events_requested = (
+        Signal()
+    )  # emitted when the Events Viewer should be cleared
+    auto_scroll_toggled = Signal(
+        bool
+    )  # emitted when the Events Viewer auto-scroll changes
+    keep_logs_toggled = Signal(
+        bool
+    )  # emitted when the Events Viewer keep-logs setting changes
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        engine_service: FIXEngineService | None = None,
+        config_path: str | Path | None = None,
+    ) -> None:
         super().__init__(parent)
         self._auto_scroll_enabled = True
         self._create_session_dialog: CreateSessionDialog | None = None
@@ -80,7 +113,11 @@ class MainWindow(QMainWindow):
         self._wire_events_viewer_panel()
         self._sync_send_message_sessions()
         self.create_fix_session_requested.connect(self._show_create_session_dialog)
-        self.app_controller = AppController(self)
+        self.app_controller = AppController(
+            self,
+            engine_service=engine_service,
+            config_path=config_path,
+        )
         self._seed_placeholder_content()
 
     def set_application_state(self, message: str) -> None:
@@ -111,6 +148,38 @@ class MainWindow(QMainWindow):
         """Append a line to the events viewer."""
         self.events_viewer_panel.append_event(message)
 
+    def upsert_session_from_config(
+        self,
+        config: SessionConfig,
+        *,
+        lifecycle_state: str,
+        state_category: str,
+        select: bool = False,
+    ) -> None:
+        """Create or update a session-list entry from a typed session configuration."""
+        entry = SessionListEntry(
+            session_id=f"{config.sender_comp_id}->{config.target_comp_id}",
+            fix_version=config.fix_version,
+            role=config.session_type,
+            sender_comp_id=config.sender_comp_id,
+            target_comp_id=config.target_comp_id,
+            lifecycle_state=lifecycle_state,
+            host=config.host,
+            port=config.port,
+            in_seq_num=config.in_seq_num,
+            out_seq_num=config.out_seq_num,
+            state_category=state_category,
+        )
+        self.session_list_widget.add_session(entry, select=select)
+
+    def remove_session_entry(self, session_id: str) -> None:
+        """Remove the matching session from the list widget."""
+        self.session_list_widget.remove_session(session_id)
+
+    def clear_session_entries(self) -> None:
+        """Remove all sessions from the session list widget."""
+        self.session_list_widget.clear_sessions()
+
     def _build_menu_bar(self) -> None:
         menu_bar = self.menuBar()
 
@@ -120,8 +189,12 @@ class MainWindow(QMainWindow):
         options_menu = menu_bar.addMenu("Options")
         help_menu = menu_bar.addMenu("Help")
 
-        self._add_action(session_menu, "Create new FIX Session...", self._on_create_fix_session)
-        self._add_action(session_menu, "Create new Kafka Session...", self._on_create_kafka_session)
+        self._add_action(
+            session_menu, "Create new FIX Session...", self._on_create_fix_session
+        )
+        self._add_action(
+            session_menu, "Create new Kafka Session...", self._on_create_kafka_session
+        )
         session_menu.addSeparator()
         self._add_action(session_menu, "Start", self._on_start_session)
         self._add_action(session_menu, "Stop", self._on_stop_session)
@@ -144,7 +217,9 @@ class MainWindow(QMainWindow):
         self._add_action(message_menu, "Save...", self._on_save_message)
         self._add_action(message_menu, "Edit...", self._on_edit_message)
         message_menu.addSeparator()
-        self._add_action(message_menu, "Send current message", self._on_send_current_message)
+        self._add_action(
+            message_menu, "Send current message", self._on_send_current_message
+        )
         self._add_action(message_menu, "Send batch...", self._on_send_batch)
 
         self._add_action(
@@ -166,8 +241,12 @@ class MainWindow(QMainWindow):
         self._add_action(options_menu, "Override SenderCompID", None, checkable=True)
         self._add_action(options_menu, "Override TargetCompID", None, checkable=True)
         self._add_action(options_menu, "Restore sessions", None, checkable=True)
-        self._add_action(options_menu, "Reconnect restored sessions", None, checkable=True)
-        self._add_action(options_menu, "Show restore sessions dialog", None, checkable=True)
+        self._add_action(
+            options_menu, "Reconnect restored sessions", None, checkable=True
+        )
+        self._add_action(
+            options_menu, "Show restore sessions dialog", None, checkable=True
+        )
         self._add_action(
             options_menu,
             "Multiline session information",
@@ -342,24 +421,40 @@ class MainWindow(QMainWindow):
         self.send_message_tab.save_requested.connect(self._on_save_message)
         self.send_message_tab.edit_requested.connect(self._on_edit_message)
         self.send_message_tab.send_all_requested.connect(self._on_send_batch)
-        self.send_message_tab.send_selected_requested.connect(self._on_send_batch)
-        self.send_message_tab.send_current_and_next_requested.connect(self._on_send_current_message)
+        self.send_message_tab.send_selected_requested.connect(
+            self._on_send_selected_messages
+        )
+        self.send_message_tab.send_current_and_next_requested.connect(
+            self._on_send_current_message
+        )
         self.send_message_tab.reset_requested.connect(self._on_reset_send_message_tab)
         self.send_message_tab.record_test_scenario_requested.connect(
             self._on_record_test_scenario_requested
         )
-        self.send_message_tab.insert_soh_requested.connect(self._on_insert_soh_requested)
-        self.send_message_tab.word_wrap_toggled.connect(self._on_send_message_word_wrap_toggled)
-        self.send_message_tab.session_changed.connect(self._on_send_message_session_changed)
-        self.send_message_tab.search_text_changed.connect(self._on_send_message_search_text_changed)
+        self.send_message_tab.insert_soh_requested.connect(
+            self._on_insert_soh_requested
+        )
+        self.send_message_tab.word_wrap_toggled.connect(
+            self._on_send_message_word_wrap_toggled
+        )
+        self.send_message_tab.session_changed.connect(
+            self._on_send_message_session_changed
+        )
+        self.send_message_tab.search_text_changed.connect(
+            self._on_send_message_search_text_changed
+        )
 
     def _wire_events_viewer_panel(self) -> None:
-        self.events_viewer_panel.filters_changed.connect(self._on_events_viewer_filters_changed)
+        self.events_viewer_panel.filters_changed.connect(
+            self._on_events_viewer_filters_changed
+        )
         self.events_viewer_panel.search_text_changed.connect(
             self._on_events_viewer_filter_text_changed
         )
 
-    def _sync_send_message_sessions(self, selected_session_id: str | None = None) -> None:
+    def _sync_send_message_sessions(
+        self, selected_session_id: str | None = None
+    ) -> None:
         self.send_message_tab.set_available_sessions(
             self.session_list_widget.session_ids(),
             selected_session_id=selected_session_id,
@@ -368,43 +463,20 @@ class MainWindow(QMainWindow):
     def _seed_placeholder_content(self) -> None:
         self.events_viewer_panel.clear_events()
         self.append_event("[console] FIX Client Simulator is ready.")
-        self.append_event("[outgoing] Placeholder MainWindow shell loaded.")
-        self.append_event("[incoming] Session list, workspace tabs, and events viewer are visible.")
 
     def _ensure_create_session_dialog(self) -> CreateSessionDialog:
         dialog = self._create_session_dialog
         if dialog is None:
             dialog = CreateSessionDialog(self)
-            dialog.session_config_submitted.connect(self._on_create_session_dialog_submitted)
-            dialog.export_for_console_requested.connect(self._on_export_for_console_requested)
+            dialog.session_config_submitted.connect(
+                self._on_create_session_dialog_submitted
+            )
+            dialog.export_for_console_requested.connect(
+                self._on_export_for_console_requested
+            )
             self._create_session_dialog = dialog
 
         return dialog
-
-    def _build_session_entry_from_config(self, config: dict[str, object]) -> SessionListEntry:
-        sender_comp_id = str(config.get("sender_comp_id") or "SENDER")
-        target_comp_id = str(config.get("target_comp_id") or "TARGET")
-        fix_version = str(config.get("fix_version") or "FIX.4.4")
-        role = str(config.get("session_type") or "Initiator")
-        host = str(config.get("remote_host") or "127.0.0.1")
-
-        remote_port = config.get("remote_port")
-        in_seq_num = config.get("in_seq_num")
-        out_seq_num = config.get("out_seq_num")
-
-        return SessionListEntry(
-            session_id=f"{sender_comp_id}->{target_comp_id}",
-            fix_version=fix_version,
-            role=role,
-            sender_comp_id=sender_comp_id,
-            target_comp_id=target_comp_id,
-            lifecycle_state="WAITING",
-            host=host,
-            port=int(remote_port) if isinstance(remote_port, int) else 0,
-            in_seq_num=int(in_seq_num) if isinstance(in_seq_num, int) else 1,
-            out_seq_num=int(out_seq_num) if isinstance(out_seq_num, int) else 1,
-            state_category="waiting",
-        )
 
     @Slot()
     def _show_create_session_dialog(self) -> None:
@@ -419,8 +491,6 @@ class MainWindow(QMainWindow):
 
     @Slot(dict)
     def _on_create_session_dialog_submitted(self, config: dict[str, object]) -> None:
-        session_entry = self._build_session_entry_from_config(config)
-        self.session_list_widget.add_session(session_entry, select=True)
         self.session_created.emit(config)
 
     @Slot(dict)
@@ -457,7 +527,11 @@ class MainWindow(QMainWindow):
 
     @Slot(bool)
     def _on_show_session_messages(self, checked: bool) -> None:
-        message = "Show session messages enabled" if checked else "Show session messages disabled"
+        message = (
+            "Show session messages enabled"
+            if checked
+            else "Show session messages disabled"
+        )
         self.set_status_message(message)
         self.show_session_messages_requested.emit()
 
@@ -516,6 +590,11 @@ class MainWindow(QMainWindow):
         self.send_current_message_requested.emit()
 
     @Slot()
+    def _on_send_selected_messages(self) -> None:
+        self.set_status_message("Send selected messages requested")
+        self.send_selected_messages_requested.emit()
+
+    @Slot()
     def _on_send_batch(self) -> None:
         self.set_status_message("Send batch requested")
         self.send_batch_requested.emit()
@@ -527,6 +606,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_record_test_scenario_requested(self) -> None:
+        self.workspace_tabs.setCurrentIndex(2)
         self.set_status_message("Record Test Scenario requested")
 
     @Slot()
@@ -535,7 +615,9 @@ class MainWindow(QMainWindow):
 
     @Slot(bool)
     def _on_send_message_word_wrap_toggled(self, checked: bool) -> None:
-        self.set_status_message("Word Wrap enabled" if checked else "Word Wrap disabled")
+        self.set_status_message(
+            "Word Wrap enabled" if checked else "Word Wrap disabled"
+        )
 
     @Slot(str)
     def _on_send_message_session_changed(self, session_id: str) -> None:
@@ -578,7 +660,9 @@ class MainWindow(QMainWindow):
     @Slot(bool)
     def _on_keep_logs_toggled(self, checked: bool) -> None:
         self.events_viewer_panel.set_keep_logs_enabled(checked)
-        self.set_status_message("Keep logs enabled" if checked else "Keep logs disabled")
+        self.set_status_message(
+            "Keep logs enabled" if checked else "Keep logs disabled"
+        )
         self.keep_logs_toggled.emit(checked)
 
     @Slot()
@@ -599,5 +683,5 @@ class MainWindow(QMainWindow):
             self,
             "About FIXSIM",
             "FIXSIM MainWindow shell\n\n"
-            "The application shell is in place with placeholder menus, tabs, and status text."
+            "The application shell is in place with placeholder menus, tabs, and status text.",
         )

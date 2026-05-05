@@ -240,3 +240,22 @@ def test_handle_execution_report_emits_error_hook_for_invalid_payload() -> None:
     assert exc_info.value.tag == 35
     assert len(observed_errors) == 1
     assert isinstance(observed_errors[0], MessageValidationError)
+
+
+def test_send_raw_message_sends_generic_fix_payload_and_emits_outbound_event() -> None:
+    outbound_events: list[EngineMessageEvent] = []
+    service = FIXEngineService(session_factory=_FakeSession)
+    service.register_outbound_message_handler(outbound_events.append)
+    session = cast(_FakeSession, service.open_session(_build_session_config()))
+
+    event = service.send_raw_message(
+        "8=FIX.4.2|35=0|49=CLIENT|56=SERVER|34=2|52=20260504-12:30:45.000|"
+    )
+
+    assert session.calls == ["connect", "logon", "send"]
+    assert len(session.sent_messages) == 1
+    assert b"35=0" in bytes(session.sent_messages[0].encode())
+    assert event.message == "Sent FIX message 35=0"
+    assert event.raw_message is not None
+    assert "35=0" in event.raw_message
+    assert outbound_events[-1] == event

@@ -3,7 +3,13 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit, QPlainTextEdit, QPushButton
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+)
 
 from src.ui.order_panel import SendMessageTab
 
@@ -30,7 +36,7 @@ def test_send_message_tab_exposes_manual_send_controls(qapp: QApplication) -> No
     assert session_combo.itemText(1) == "CLIENT_A->BROKER_A"
     assert autoincrement_edit.text() == "35 11 60"
     assert editor.isReadOnly() is False
-    assert "11=ORDER_1" in editor.toPlainText()
+    assert editor.toPlainText() == ""
 
     QTest.keyClicks(search_edit, "ClOrdID")
     qapp.processEvents()
@@ -39,7 +45,9 @@ def test_send_message_tab_exposes_manual_send_controls(qapp: QApplication) -> No
     tab.close()
 
 
-def test_send_message_tab_search_moves_editor_selection_to_match(qapp: QApplication) -> None:
+def test_send_message_tab_search_moves_editor_selection_to_match(
+    qapp: QApplication,
+) -> None:
     tab = SendMessageTab()
     tab.show()
     qapp.processEvents()
@@ -52,6 +60,11 @@ def test_send_message_tab_search_moves_editor_selection_to_match(qapp: QApplicat
 
     search_values: list[str] = []
     tab.search_text_changed.connect(search_values.append)
+
+    tab.set_message_text(
+        "8=FIX.4.4|35=D|49=CLIENT_A|56=BROKER_A|11=ORDER_1|\n"
+        "8=FIX.4.4|35=F|49=CLIENT_A|56=BROKER_A|11=ORDER_2|"
+    )
 
     QTest.keyClicks(search_edit, "ORDER_2")
     qapp.processEvents()
@@ -137,5 +150,28 @@ def test_send_message_tab_buttons_and_editor_actions_emit_expected_signals(
     assert word_wrap_values == [True]
     assert editor.toPlainText().endswith("\x01")
     assert editor.lineWrapMode() == QPlainTextEdit.LineWrapMode.WidgetWidth
+
+    tab.close()
+
+
+def test_send_message_tab_returns_message_blocks_and_can_focus_editor(
+    qapp: QApplication,
+) -> None:
+    tab = SendMessageTab()
+    tab.show()
+    qapp.processEvents()
+
+    editor = tab.findChild(QPlainTextEdit, "sendMessageEditor")
+    assert editor is not None
+
+    tab.set_message_text("8=FIX.4.4|35=D|11=ORDER_1|\n\n" "8=FIX.4.4|35=F|11=ORDER_2|")
+    tab.focus_editor()
+    qapp.processEvents()
+
+    assert tab.all_message_blocks() == [
+        "8=FIX.4.4|35=D|11=ORDER_1|",
+        "8=FIX.4.4|35=F|11=ORDER_2|",
+    ]
+    assert editor.hasFocus() is True
 
     tab.close()
