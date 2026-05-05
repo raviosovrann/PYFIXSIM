@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtWidgets import QApplication, QListWidget
+from PySide6.QtWidgets import QApplication, QListWidget, QTableWidget
 
 import src.ui.controller as controller_module
 from src.config.session_config import SessionConfig, save_config
@@ -328,4 +328,41 @@ def test_app_controller_reports_session_switch_close_errors(
     assert "close failed" in window.statusBar().currentMessage()
     assert "[console] close failed" in window.events_viewer.toPlainText()
 
+    window.close()
+
+
+def test_app_controller_opens_message_details_dialog_for_current_message(
+    qapp: QApplication,
+    tmp_path: Path,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    window.send_message_tab.set_message_text(
+        "8=FIX.4.2|35=D|49=CLIENT|56=SERVER|11=ORDER_1|58=LONG_VALUE|10=123|"
+    )
+
+    window.edit_message_requested.emit()
+    qapp.processEvents()
+
+    dialog = window.app_controller._message_details_dialog
+    assert dialog is not None
+    assert dialog.isVisible() is True
+
+    table = dialog.findChild(QTableWidget, "messageDetailsTable")
+    assert table is not None
+
+    tags: list[str] = []
+    for row in range(table.rowCount()):
+        item = table.item(row, 0)
+        assert item is not None
+        tags.append(item.text())
+
+    assert "35" in tags
+    assert "11" in tags
+    assert "10" in tags
+    assert window.statusBar().currentMessage() == "Message Details dialog opened"
+
+    dialog.close()
     window.close()

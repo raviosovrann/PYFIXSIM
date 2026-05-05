@@ -104,7 +104,7 @@ an item done unless the implementation appears to satisfy the written criteria.
   - contains no widget layout code
   - uses placeholder / stub handlers if engine service is still empty
   - updates status bar and selected-session context through signals
-- [ ] 7. `MessageDetailsDialog` — FIX message inspector
+- [x] 7. `MessageDetailsDialog` — FIX message inspector
   - read-only table with `Tag`, `Name`, `Value` columns
   - supports opening from events viewer selection / future hook
   - window has `OK` close action

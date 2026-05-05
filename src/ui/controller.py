@@ -20,6 +20,7 @@ from src.engine.service import (
 )
 from src.engine.session import FIXSessionError, SessionState
 from src.messages.order import MessageValidationError, NewOrderSingle
+from src.ui.message_details_dialog import MessageDetailsDialog
 
 if TYPE_CHECKING:
     from src.ui.main_window import MainWindow
@@ -58,6 +59,7 @@ class AppController(QObject):
         self._engine_service = engine_service or FIXEngineService()
         self._config_path = config_path
         self._known_session_configs: dict[str, SessionConfig] = {}
+        self._message_details_dialog: MessageDetailsDialog | None = None
         self._selected_session_id: str | None = None
 
         self._wire_output_signals()
@@ -194,6 +196,24 @@ class AppController(QObject):
 
     def _render_message_for_editor(self, raw_message: str) -> str:
         return raw_message.replace("\x01", "|")
+
+    def _ensure_message_details_dialog(self) -> MessageDetailsDialog:
+        dialog = self._message_details_dialog
+        if dialog is None:
+            dialog = MessageDetailsDialog(self._window)
+            self._message_details_dialog = dialog
+        return dialog
+
+    def _current_message_for_details(self) -> str | None:
+        current_block = self._window.send_message_tab.current_message_block()
+        if current_block:
+            return current_block
+
+        message_text = self._window.send_message_tab.message_text().strip()
+        if message_text:
+            return message_text
+
+        return None
 
     def _send_message_blocks(self, message_blocks: list[str]) -> None:
         if not message_blocks:
@@ -420,9 +440,15 @@ class AppController(QObject):
 
     @Slot()
     def _on_edit_message_requested(self) -> None:
-        self._window.workspace_tabs.setCurrentWidget(self._window.send_message_tab)
-        self._window.send_message_tab.focus_editor()
-        self.status_message_changed.emit("Send Message editor focused for editing")
+        dialog = self._ensure_message_details_dialog()
+        dialog.set_message_text(
+            self._current_message_for_details(),
+            source_label="Current FIX message",
+        )
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        self.status_message_changed.emit("Message Details dialog opened")
 
     @Slot()
     def _on_send_current_message_requested(self) -> None:
