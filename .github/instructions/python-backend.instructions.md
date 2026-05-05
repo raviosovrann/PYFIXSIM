@@ -74,7 +74,7 @@ Each backend file owns one primary V1 responsibility:
 | `src/config/session_config.py` | `SessionConfig` + config load/save logic | ☑ done |
 | `src/engine/session.py` | `FIXSession` — socket lifecycle, state machine, sequence numbers, logout/close | ☑ done |
 | `src/engine/service.py` | `FIXEngineService` — UI-facing backend API, callbacks, event routing | ☑ done |
-| `src/messages/order.py` | `NewOrderSingle` + `ExecutionReport` encode/parse support | ☐ not started |
+| `src/messages/order.py` | `NewOrderSingle` + `ExecutionReport` encode/parse support | ☑ done |
 
 Tests map to the owning backend areas like this:
 
@@ -134,13 +134,13 @@ appears to satisfy the written criteria.
 	- exposes state-change, inbound-message, outbound-message, and error hooks
 	- stores or references the active session/config needed for V1 workflows
 	- close-session path is covered for happy-path behavior
-- [ ] 4. `NewOrderSingle` support — outbound order flow
+- [x] 4. `NewOrderSingle` support — outbound order flow
 	- validate required FIX order fields before encoding
 	- build FIX messages with `simplefix.FixMessage.append_pair()`
 	- service can send a `NewOrderSingle` through the active session
 	- outbound order send path records an event/log entry for the UI viewer
 	- tests cover required-field validation and message encoding basics
-- [ ] 5. `ExecutionReport` handling — inbound report flow
+- [x] 5. `ExecutionReport` handling — inbound report flow
 	- parse core execution-report fields needed for V1 UI display
 	- safe handling for missing/invalid fields via typed exceptions or logged
 		validation failures
