@@ -20,9 +20,9 @@ Each file under `src/ui/` owns exactly one primary component:
 |------|-----------|--------|
 | `src/ui/main_window.py` | `MainWindow` — `QMainWindow` shell, menu bar, splitters, status bar | ☑ complete |
 | `src/ui/session_widget.py` | `SessionListWidget` — left-pane session list, status indicators, context menu | ☑ complete |
-| `src/ui/order_panel.py` | `SendMessageTab` + `ReplayTab` — right-panel tabbed workspace | ☐ not started |
-| `src/ui/message_log.py` | `EventsViewer` — lower log panel, colour coding, filter bar, split/grid modes | ☐ not started |
-| `src/ui/controller.py` | `AppController` — wires all widget signals to `FIXEngineService` | ☐ not started |
+| `src/ui/order_panel.py` | `SendMessageTab` + `ReplayTab` — right-panel tabbed workspace | ◐ partial (`SendMessageTab` complete, `ReplayTab` pending) |
+| `src/ui/message_log.py` | `EventsViewer` — lower log panel, colour coding, filter bar, split/grid modes | ☑ complete |
+| `src/ui/controller.py` | `AppController` — wires all widget signals to `FIXEngineService` | ☑ complete |
 
 Dialogs live in their own files created alongside the above:
 
@@ -98,7 +98,7 @@ an item done unless the implementation appears to satisfy the written criteria.
   - bottom controls include timestamp/header-trailer/application/session toggles
   - includes `Incoming`, `Outgoing`, `Console` filters and free-text filter box
   - supports clear + auto-scroll actions, even if first version is stubbed
-- [ ] 6. `AppController` — first UI wiring pass
+- [x] 6. `AppController` — first UI wiring pass
   - receives session-create requests from dialog and send requests from tabs
   - owns signal wiring between widgets and future `FIXEngineService`
   - contains no widget layout code
