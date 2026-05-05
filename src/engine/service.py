@@ -6,10 +6,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeAlias, TypeVar
+
+import simplefix  # type: ignore[import-untyped]
 
 from src.config.session_config import SessionConfig
 from src.engine.session import FIXSession, FIXSessionError, SessionState
+from src.messages.order import ExecutionReport, MessageValidationError, NewOrderSingle
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +58,18 @@ class SessionLifecycle(Protocol):
 
     def close(self, reason: str | None = None) -> None: ...
 
+    def next_out_seq_num(self) -> int: ...
+
+    def send(self, message: simplefix.FixMessage) -> None: ...
+
 
 SessionFactory = Callable[[SessionConfig], SessionLifecycle]
 StateChangeHandler = Callable[[SessionState], None]
 MessageHandler = Callable[[EngineMessageEvent], None]
 ErrorHandler = Callable[[Exception], None]
+ExecutionReportHandler = Callable[[ExecutionReport], None]
 HandlerPayload = TypeVar("HandlerPayload")
+RawFixMessage: TypeAlias = simplefix.FixMessage | bytes | bytearray | memoryview | str
 
 
 class FIXEngineService:
@@ -75,6 +84,7 @@ class FIXEngineService:
         self._inbound_message_handlers: list[MessageHandler] = []
         self._outbound_message_handlers: list[MessageHandler] = []
         self._error_handlers: list[ErrorHandler] = []
+        self._execution_report_handlers: list[ExecutionReportHandler] = []
 
     @property
     def active_config(self) -> SessionConfig | None:
@@ -107,6 +117,14 @@ class FIXEngineService:
         """Register a callback for engine service errors."""
         with self._lock:
             self._error_handlers.append(handler)
+
+    def register_execution_report_handler(
+        self,
+        handler: ExecutionReportHandler,
+    ) -> None:
+        """Register a callback for parsed execution reports."""
+        with self._lock:
+            self._execution_report_handlers.append(handler)
 
     def create_session(
         self,
@@ -200,6 +218,62 @@ class FIXEngineService:
         )
         return event
 
+    def send_new_order_single(
+        self,
+        order: NewOrderSingle,
+    ) -> EngineMessageEvent:
+        """Encode, send, and emit an event for a NewOrderSingle."""
+        session = self._require_active_session()
+        if session.state is not SessionState.ACTIVE:
+            error = FIXEngineServiceError(
+                "Active FIX session is required before sending NewOrderSingle"
+            )
+            self._emit_error(error)
+            raise error
+
+        try:
+            fix_message = order.to_fix_message(
+                session.config,
+                MsgSeqNum=session.next_out_seq_num(),
+            )
+            session.send(fix_message)
+        except (FIXEngineServiceError, FIXSessionError, MessageValidationError) as exc:
+            self._emit_error(exc)
+            raise
+
+        return self._emit_outbound_message(
+            session.config,
+            f"NewOrderSingle 11={order.ClOrdID}",
+            raw_message=self._encode_fix_message(fix_message),
+        )
+
+    def handle_execution_report(self, message: RawFixMessage) -> ExecutionReport:
+        """Parse, emit, and return an inbound ExecutionReport."""
+        session = self._require_active_session()
+
+        try:
+            fix_message = self._coerce_fix_message(message)
+            execution_report = ExecutionReport.from_fix_message(fix_message)
+        except (FIXEngineServiceError, FIXSessionError, MessageValidationError) as exc:
+            self._emit_error(exc)
+            raise
+
+        event = self._build_message_event(
+            session.config,
+            MessageDirection.INBOUND,
+            message=f"ExecutionReport 11={execution_report.ClOrdID}",
+            raw_message=self._encode_fix_message(fix_message),
+        )
+        self._emit_message(
+            self._copy_message_handlers(self._inbound_message_handlers),
+            event,
+        )
+        self._emit_simple(
+            self._copy_execution_report_handlers(self._execution_report_handlers),
+            execution_report,
+        )
+        return execution_report
+
     def _require_active_session(self) -> SessionLifecycle:
         with self._lock:
             session = self._active_session
@@ -267,6 +341,13 @@ class FIXEngineService:
         with self._lock:
             return list(handlers)
 
+    def _copy_execution_report_handlers(
+        self,
+        handlers: list[ExecutionReportHandler],
+    ) -> list[ExecutionReportHandler]:
+        with self._lock:
+            return list(handlers)
+
     @staticmethod
     def _emit_simple(
         handlers: list[Callable[[HandlerPayload], None]],
@@ -316,6 +397,36 @@ class FIXEngineService:
         if isinstance(message, str):
             return message
         return bytes(message).decode("utf-8", errors="replace")
+
+    def _coerce_fix_message(self, message: RawFixMessage) -> simplefix.FixMessage:
+        if isinstance(message, simplefix.FixMessage):
+            return message
+
+        fix_message = simplefix.FixMessage()
+        normalized_text = self._normalize_raw_message(message).replace("|", "\x01")
+        fields = [field for field in normalized_text.split("\x01") if field]
+        if not fields:
+            raise MessageValidationError(8, "unable to parse FIX message payload")
+
+        for field in fields:
+            if "=" not in field:
+                raise MessageValidationError(8, f"invalid FIX field: {field!r}")
+
+            raw_tag, value = field.split("=", 1)
+            try:
+                tag = int(raw_tag)
+            except ValueError as exc:
+                raise MessageValidationError(
+                    8,
+                    f"invalid FIX tag: {raw_tag!r}",
+                ) from exc
+
+            fix_message.append_pair(tag, value)
+
+        return fix_message
+
+    def _encode_fix_message(self, message: simplefix.FixMessage) -> str:
+        return self._normalize_raw_message(message.encode())
 
 
 __all__ = [

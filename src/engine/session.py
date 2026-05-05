@@ -171,6 +171,23 @@ class FIXSession:
         finally:
             self.disconnect()
 
+    def next_out_seq_num(self) -> int:
+        """Reserve and return the next outbound sequence number."""
+        with self._lock:
+            MsgSeqNum = self._out_seq_num
+            self._out_seq_num += 1
+            return MsgSeqNum
+
+    def send(self, message: simplefix.FixMessage) -> None:
+        """Send an application FIX message while the session is active."""
+        with self._lock:
+            if self._state != SessionState.ACTIVE:
+                raise SessionStateError(
+                    "FIX session must be active before sending application messages"
+                )
+
+        self._send_message(message)
+
     def _send_message(self, message: simplefix.FixMessage) -> None:
         payload = message.encode()
         with self._lock:

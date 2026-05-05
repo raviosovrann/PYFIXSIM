@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 
 import pytest
+import simplefix  # type: ignore[import-untyped]
 
 from src.config.session_config import SessionConfig
 from src.engine.session import FIXSession, SessionState, SessionStateError
@@ -134,3 +135,31 @@ def test_logon_requires_connected_session() -> None:
 
     with pytest.raises(SessionStateError):
         session.logon()
+
+
+def test_send_requires_active_session_and_uses_reserved_sequence_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_socket = _FakeSocket()
+    monkeypatch.setattr(
+        socket,
+        "create_connection",
+        lambda *args, **kwargs: fake_socket,
+    )
+    session = FIXSession(_build_session_config())
+
+    session.connect()
+    session.logon()
+
+    MsgSeqNum = session.next_out_seq_num()
+    message = simplefix.FixMessage()
+    message.append_pair(8, "FIX.4.2")
+    message.append_pair(35, "D")
+    message.append_pair(34, str(MsgSeqNum))
+
+    session.send(message)
+
+    assert MsgSeqNum == 2
+    assert session.out_seq_num == 3
+    assert len(fake_socket.sent_payloads) == 2
+    assert b"35=D" in fake_socket.sent_payloads[1]
