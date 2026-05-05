@@ -43,7 +43,9 @@ class CreateSessionDialog(QDialog):
         """Collect the current dialog values into a configuration dictionary."""
         session_type = "Initiator" if self._initiator_radio.isChecked() else "Acceptor"
         ssl_protocols = [
-            checkbox.text() for checkbox in self._ssl_protocol_checkboxes if checkbox.isChecked()
+            checkbox.text()
+            for checkbox in self._ssl_protocol_checkboxes
+            if checkbox.isChecked()
         ]
 
         return {
@@ -150,7 +152,9 @@ class CreateSessionDialog(QDialog):
         configuration_row.addWidget(self._configuration_combo, 1)
         configuration_row.addWidget(QPushButton("Save", required_group))
         configuration_row.addWidget(QPushButton("Delete", required_group))
-        form.addRow("Configuration:", self._wrap_layout(configuration_row, required_group))
+        form.addRow(
+            "Configuration:", self._wrap_layout(configuration_row, required_group)
+        )
 
         self._initiator_radio = QRadioButton("Initiator", required_group)
         self._acceptor_radio = QRadioButton("Acceptor", required_group)
@@ -165,7 +169,9 @@ class CreateSessionDialog(QDialog):
         session_type_row.addWidget(self._initiator_radio)
         session_type_row.addWidget(self._acceptor_radio)
         session_type_row.addStretch()
-        form.addRow("Session type:", self._wrap_layout(session_type_row, required_group))
+        form.addRow(
+            "Session type:", self._wrap_layout(session_type_row, required_group)
+        )
 
         self._sender_comp_id_edit = QLineEdit(required_group)
         self._sender_comp_id_edit.setObjectName("senderCompIdEdit")
@@ -199,11 +205,15 @@ class CreateSessionDialog(QDialog):
         self._out_seq_num_spin.setObjectName("outSeqNumSpin")
         form.addRow("OutSeqNum:", self._out_seq_num_spin)
 
-        self._custom_logon_checkbox = QCheckBox("Use custom Logon message", required_group)
+        self._custom_logon_checkbox = QCheckBox(
+            "Use custom Logon message", required_group
+        )
         self._custom_logon_checkbox.setObjectName("customLogonCheckbox")
         self._custom_logon_editor = QPlainTextEdit(required_group)
         self._custom_logon_editor.setObjectName("customLogonEditor")
-        self._custom_logon_editor.setPlaceholderText("8=FIX.4.4|35=A|49=SENDER|56=TARGET|")
+        self._custom_logon_editor.setPlaceholderText(
+            "8=FIX.4.4|35=A|49=SENDER|56=TARGET|"
+        )
         custom_logon_layout = QVBoxLayout()
         custom_logon_layout.setContentsMargins(0, 0, 0, 0)
         custom_logon_layout.setSpacing(6)
@@ -211,7 +221,9 @@ class CreateSessionDialog(QDialog):
         custom_logon_layout.addWidget(self._custom_logon_editor)
         form.addRow("", self._wrap_layout(custom_logon_layout, required_group))
 
-        self._persistent_storage_checkbox = QCheckBox("Persistent storage type", required_group)
+        self._persistent_storage_checkbox = QCheckBox(
+            "Persistent storage type", required_group
+        )
         self._persistent_storage_checkbox.setObjectName("persistentStorageCheckbox")
         form.addRow("", self._persistent_storage_checkbox)
 
@@ -242,12 +254,16 @@ class CreateSessionDialog(QDialog):
             "Use Extended properties",
             toggles_group,
         )
-        self._use_extended_properties_checkbox.setObjectName("useExtendedPropertiesCheckbox")
+        self._use_extended_properties_checkbox.setObjectName(
+            "useExtendedPropertiesCheckbox"
+        )
         self._show_session_messages_checkbox = QCheckBox(
             "Show session messages",
             toggles_group,
         )
-        self._show_session_messages_checkbox.setObjectName("showSessionMessagesCheckbox")
+        self._show_session_messages_checkbox.setObjectName(
+            "showSessionMessagesCheckbox"
+        )
         self._show_session_messages_checkbox.setChecked(True)
         self._use_ssl_checkbox = QCheckBox("Use SSL", toggles_group)
         self._use_ssl_checkbox.setObjectName("useSslCheckbox")
@@ -366,7 +382,14 @@ class CreateSessionDialog(QDialog):
         protocol_layout.setContentsMargins(10, 14, 10, 10)
         protocol_layout.setSpacing(6)
 
-        protocol_labels = ["SSL v2", "SSL v3", "TLS v1.0", "TLS v1.1", "TLS v1.2", "TLS v1.3"]
+        protocol_labels = [
+            "SSL v2",
+            "SSL v3",
+            "TLS v1.0",
+            "TLS v1.1",
+            "TLS v1.2",
+            "TLS v1.3",
+        ]
         self._ssl_protocol_checkboxes: list[QCheckBox] = []
         for index, label in enumerate(protocol_labels):
             checkbox = QCheckBox(label, protocol_group)
@@ -384,7 +407,9 @@ class CreateSessionDialog(QDialog):
         self._certificate_edit = QLineEdit(form_group)
         self._private_key_edit = QLineEdit(form_group)
         self._ca_certificates_edit = QLineEdit(form_group)
-        self._validate_peer_checkbox = QCheckBox("Validate Peer Certificate", form_group)
+        self._validate_peer_checkbox = QCheckBox(
+            "Validate Peer Certificate", form_group
+        )
         self._validate_peer_checkbox.setChecked(True)
 
         form.addRow("Ciphers:", self._ssl_ciphers_edit)
@@ -399,7 +424,9 @@ class CreateSessionDialog(QDialog):
 
     def _wire_signals(self) -> None:
         self._custom_logon_checkbox.toggled.connect(self._on_custom_logon_toggled)
-        self._use_extended_properties_checkbox.toggled.connect(self._on_extended_properties_toggled)
+        self._use_extended_properties_checkbox.toggled.connect(
+            self._on_extended_properties_toggled
+        )
         self._use_ssl_checkbox.toggled.connect(self._on_use_ssl_toggled)
         self._export_button.clicked.connect(self._on_export_for_console_clicked)
         self._button_box.accepted.connect(self._on_accept_clicked)
@@ -411,7 +438,9 @@ class CreateSessionDialog(QDialog):
         self._backup_connection_group.setEnabled(False)
         self._ssl_group.setEnabled(False)
 
-    def _wrap_layout(self, layout: QHBoxLayout | QVBoxLayout, parent: QWidget) -> QWidget:
+    def _wrap_layout(
+        self, layout: QHBoxLayout | QVBoxLayout, parent: QWidget
+    ) -> QWidget:
         container = QWidget(parent)
         container.setLayout(layout)
         return container

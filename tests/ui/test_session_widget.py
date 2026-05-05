@@ -9,7 +9,12 @@ from PySide6.QtWidgets import (
     QListWidget,
 )
 
-from src.ui.session_widget import SessionListEntry, SessionListWidget, _SessionRowWidget
+from src.ui.session_widget import (
+    SessionListEntry,
+    SessionListWidget,
+    _SessionRowWidget,
+    build_placeholder_sessions,
+)
 
 
 def _find_action(widget: SessionListWidget, object_name: str) -> QAction:
@@ -25,10 +30,15 @@ def test_session_list_widget_supports_multiline_selection_and_context_actions(
     widget.show()
     qapp.processEvents()
 
+    widget.set_sessions(build_placeholder_sessions())
+    qapp.processEvents()
+
     list_widget = widget.findChild(QListWidget, "sessionList")
     assert list_widget is not None
     assert list_widget.count() >= 1
-    assert list_widget.selectionMode() == QAbstractItemView.SelectionMode.ExtendedSelection
+    assert (
+        list_widget.selectionMode() == QAbstractItemView.SelectionMode.ExtendedSelection
+    )
 
     selected_ids: list[list[str]] = []
     widget.selection_changed.connect(selected_ids.append)
@@ -74,6 +84,9 @@ def test_session_list_widget_exposes_state_indicators_and_clearable_multi_select
 ) -> None:
     widget = SessionListWidget()
     widget.show()
+    qapp.processEvents()
+
+    widget.set_sessions(build_placeholder_sessions())
     qapp.processEvents()
 
     list_widget = widget.findChild(QListWidget, "sessionList")
@@ -124,9 +137,14 @@ def test_session_list_widget_exposes_state_indicators_and_clearable_multi_select
     widget.close()
 
 
-def test_session_list_widget_emits_all_non_modal_action_signals(qapp: QApplication) -> None:
+def test_session_list_widget_emits_all_non_modal_action_signals(
+    qapp: QApplication,
+) -> None:
     widget = SessionListWidget()
     widget.show()
+    qapp.processEvents()
+
+    widget.set_sessions(build_placeholder_sessions())
     qapp.processEvents()
 
     refresh_calls: list[bool] = []

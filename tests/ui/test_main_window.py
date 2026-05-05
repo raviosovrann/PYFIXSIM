@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtTest import QTest
@@ -13,6 +15,7 @@ from PySide6.QtWidgets import (
     QMenu,
 )
 
+from src.config.session_config import SessionConfig, save_config
 from src.ui.create_session_dialog import CreateSessionDialog
 from src.ui.main_window import MainWindow
 
@@ -33,8 +36,27 @@ def _find_menu_action(window: MainWindow, menu_title: str, action_text: str) -> 
     raise AssertionError(f"Action {action_text!r} was not found in menu {menu_title!r}")
 
 
-def test_main_window_widget_interactions(qapp: QApplication) -> None:
-    window = MainWindow()
+def _create_config_file(
+    tmp_path: Path,
+    *,
+    sender_comp_id: str = "CLIENT",
+    target_comp_id: str = "SERVER",
+    host: str = "127.0.0.1",
+    port: int = 9876,
+) -> Path:
+    return save_config(
+        SessionConfig(
+            sender_comp_id=sender_comp_id,
+            target_comp_id=target_comp_id,
+            host=host,
+            port=port,
+        ),
+        tmp_path / "session.cfg",
+    )
+
+
+def test_main_window_widget_interactions(qapp: QApplication, tmp_path: Path) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
     window.show()
     qapp.processEvents()
 
@@ -45,7 +67,8 @@ def test_main_window_widget_interactions(qapp: QApplication) -> None:
     assert menu_titles == ["Session", "Message", "Events Viewer", "Options", "Help"]
 
     tab_titles = [
-        window.workspace_tabs.tabText(index) for index in range(window.workspace_tabs.count())
+        window.workspace_tabs.tabText(index)
+        for index in range(window.workspace_tabs.count())
     ]
     assert tab_titles == ["Send Message", "Replay", "Test Scenarios"]
 
@@ -74,24 +97,38 @@ def test_main_window_widget_interactions(qapp: QApplication) -> None:
 
 def test_main_window_updates_session_state_and_menu_driven_behaviour(
     qapp: QApplication,
+    tmp_path: Path,
 ) -> None:
-    window = MainWindow()
+    window = MainWindow(config_path=_create_config_file(tmp_path))
     window.show()
     qapp.processEvents()
 
     list_widget = window.findChild(QListWidget, "sessionList")
     assert list_widget is not None
 
+    window.upsert_session_from_config(
+        SessionConfig(
+            sender_comp_id="SECONDARY",
+            target_comp_id="BROKER_2",
+            host="127.0.0.1",
+            port=9879,
+        ),
+        lifecycle_state="WAITING",
+        state_category="waiting",
+        select=False,
+    )
+    qapp.processEvents()
+
     first_item = list_widget.item(0)
     second_item = list_widget.item(1)
 
     first_item.setSelected(True)
     qapp.processEvents()
-    assert window.session_state_label.text() == "Session: CLIENT_A->BROKER_A"
+    assert window.session_state_label.text() == "Session: CLIENT->SERVER"
 
     second_item.setSelected(True)
     qapp.processEvents()
-    assert window.session_state_label.text() == "Session: CLIENT_A->BROKER_A (+1 more)"
+    assert window.session_state_label.text() == "Session: CLIENT->SERVER (+1 more)"
 
     list_widget.clearSelection()
     qapp.processEvents()
@@ -145,8 +182,9 @@ def test_main_window_updates_session_state_and_menu_driven_behaviour(
 
 def test_main_window_opens_create_session_dialog_and_adds_session(
     qapp: QApplication,
+    tmp_path: Path,
 ) -> None:
-    window = MainWindow()
+    window = MainWindow(config_path=_create_config_file(tmp_path))
     window.show()
     qapp.processEvents()
 
@@ -154,7 +192,9 @@ def test_main_window_opens_create_session_dialog_and_adds_session(
     assert list_widget is not None
     initial_count = list_widget.count()
 
-    create_session_action = _find_menu_action(window, "Session", "Create new FIX Session...")
+    create_session_action = _find_menu_action(
+        window, "Session", "Create new FIX Session..."
+    )
     create_session_action.trigger()
     qapp.processEvents()
 
@@ -189,7 +229,10 @@ def test_main_window_opens_create_session_dialog_and_adds_session(
     assert window.session_state_label.text() == "Session: ALGO_DESK->EXEC_BROKER"
     assert window.application_state_label.text() == "Application: Session created"
     assert "New session was created" in window.statusBar().currentMessage()
-    assert "ALGO_DESK->EXEC_BROKER" in window.events_viewer.toPlainText()
+    assert (
+        "New session was created: ALGO_DESK->EXEC_BROKER"
+        in window.events_viewer.toPlainText()
+    )
     assert session_combo.currentText() == "ALGO_DESK->EXEC_BROKER"
 
     window.close()

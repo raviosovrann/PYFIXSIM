@@ -58,7 +58,9 @@ def test_events_viewer_filters_categories_and_text(qapp: QApplication) -> None:
     widget.close()
 
 
-def test_events_viewer_timestamp_toggle_changes_rendered_lines(qapp: QApplication) -> None:
+def test_events_viewer_timestamp_toggle_changes_rendered_lines(
+    qapp: QApplication,
+) -> None:
     widget = EventsViewer()
     widget.show()
     qapp.processEvents()

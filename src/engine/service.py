@@ -247,6 +247,29 @@ class FIXEngineService:
             raw_message=self._encode_fix_message(fix_message),
         )
 
+    def send_raw_message(self, message: RawFixMessage) -> EngineMessageEvent:
+        """Send a raw FIX payload for the active session and emit an outbound event."""
+        session = self._require_active_session()
+        if session.state is not SessionState.ACTIVE:
+            error = FIXEngineServiceError(
+                "Active FIX session is required before sending raw FIX messages"
+            )
+            self._emit_error(error)
+            raise error
+
+        try:
+            fix_message = self._coerce_fix_message(message)
+            session.send(fix_message)
+        except (FIXEngineServiceError, FIXSessionError, MessageValidationError) as exc:
+            self._emit_error(exc)
+            raise
+
+        return self._emit_outbound_message(
+            session.config,
+            self._describe_fix_message(fix_message),
+            raw_message=self._encode_fix_message(fix_message),
+        )
+
     def handle_execution_report(self, message: RawFixMessage) -> ExecutionReport:
         """Parse, emit, and return an inbound ExecutionReport."""
         session = self._require_active_session()
@@ -427,6 +450,15 @@ class FIXEngineService:
 
     def _encode_fix_message(self, message: simplefix.FixMessage) -> str:
         return self._normalize_raw_message(message.encode())
+
+    @staticmethod
+    def _describe_fix_message(message: simplefix.FixMessage) -> str:
+        raw_msg_type = message.get(35)
+        if raw_msg_type is None:
+            return "Sent FIX message"
+
+        msg_type = bytes(raw_msg_type).decode("utf-8", errors="replace")
+        return f"Sent FIX message 35={msg_type}"
 
 
 __all__ = [
