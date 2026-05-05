@@ -13,7 +13,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  quality-checks:
+    name: quality-checks
     runs-on: ubuntu-latest
     env:
       QT_QPA_PLATFORM: offscreen
