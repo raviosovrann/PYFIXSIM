@@ -18,7 +18,7 @@ from src.engine.service import (
     FIXEngineService,
     FIXEngineServiceError,
 )
-from src.engine.session import SessionState
+from src.engine.session import FIXSessionError, SessionState
 from src.messages.order import MessageValidationError, NewOrderSingle
 
 if TYPE_CHECKING:
@@ -201,10 +201,10 @@ class AppController(QObject):
             return
 
         try:
-            self._engine_service.open_session(config)
+            self._engine_service.open_session()
             for message_block in message_blocks:
                 self._engine_service.send_raw_message(message_block)
-        except (FIXEngineServiceError, MessageValidationError) as exc:
+        except (FIXEngineServiceError, FIXSessionError, MessageValidationError) as exc:
             self._on_engine_error(exc)
             return
 
@@ -263,8 +263,8 @@ class AppController(QObject):
             return
 
         try:
-            self._engine_service.open_session(config)
-        except FIXEngineServiceError as exc:
+            self._engine_service.open_session()
+        except (FIXEngineServiceError, FIXSessionError) as exc:
             self._on_engine_error(exc)
 
     @Slot()
@@ -275,7 +275,7 @@ class AppController(QObject):
 
         try:
             self._engine_service.close_session("Client requested stop")
-        except FIXEngineServiceError as exc:
+        except (FIXEngineServiceError, FIXSessionError) as exc:
             self._on_engine_error(exc)
 
     @Slot()
@@ -287,8 +287,8 @@ class AppController(QObject):
         try:
             if self._engine_service.active_session is not None:
                 self._engine_service.close_session("Client requested restart")
-            self._engine_service.open_session(config)
-        except FIXEngineServiceError as exc:
+            self._engine_service.open_session()
+        except (FIXEngineServiceError, FIXSessionError) as exc:
             self._on_engine_error(exc)
 
     @Slot()
@@ -312,7 +312,7 @@ class AppController(QObject):
             try:
                 if self._engine_service.active_session is not None:
                     self._engine_service.close_session("Client requested close")
-            except FIXEngineServiceError as exc:
+            except (FIXEngineServiceError, FIXSessionError) as exc:
                 self._on_engine_error(exc)
 
         self._known_session_configs.pop(session_id, None)
@@ -325,7 +325,7 @@ class AppController(QObject):
         if self._engine_service.active_session is not None:
             try:
                 self._engine_service.close_session("Client requested close all")
-            except FIXEngineServiceError as exc:
+            except (FIXEngineServiceError, FIXSessionError) as exc:
                 self._on_engine_error(exc)
 
         self._known_session_configs.clear()
@@ -380,7 +380,12 @@ class AppController(QObject):
         if not file_path:
             return
 
-        message_text = Path(file_path).read_text(encoding="utf-8")
+        try:
+            message_text = Path(file_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            self._on_engine_error(exc)
+            return
+
         self._window.send_message_tab.set_message_text(message_text)
         self._window.send_message_tab.focus_editor()
         self.status_message_changed.emit(
@@ -403,7 +408,12 @@ class AppController(QObject):
         if not file_path:
             return
 
-        Path(file_path).write_text(message_text, encoding="utf-8")
+        try:
+            Path(file_path).write_text(message_text, encoding="utf-8")
+        except OSError as exc:
+            self._on_engine_error(exc)
+            return
+
         self.status_message_changed.emit(f"Saved FIX message to {Path(file_path).name}")
 
     @Slot()

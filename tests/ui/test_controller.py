@@ -5,6 +5,7 @@ from typing import cast
 
 from PySide6.QtWidgets import QApplication, QListWidget
 
+import src.ui.controller as controller_module
 from src.config.session_config import SessionConfig, save_config
 from src.engine.service import FIXEngineService
 from src.engine.session import SessionConnectionError, SessionState
@@ -172,5 +173,99 @@ def test_app_controller_start_and_stop_operate_against_engine_service(
 
     assert session.calls == ["connect", "logon", "close"]
     assert "Client requested stop" in str(session.close_reasons[-1])
+
+    window.close()
+
+
+def test_app_controller_reuses_active_session_when_start_requested_twice(
+    qapp: QApplication,
+    tmp_path: Path,
+) -> None:
+    service = FIXEngineService(session_factory=_FakeSession)
+    window = MainWindow(
+        engine_service=service,
+        config_path=_create_config_file(tmp_path),
+    )
+    window.show()
+    qapp.processEvents()
+
+    list_widget = window.findChild(QListWidget, "sessionList")
+    assert list_widget is not None
+
+    first_item = list_widget.item(0)
+    first_item.setSelected(True)
+    qapp.processEvents()
+
+    window.start_session_requested.emit()
+    qapp.processEvents()
+
+    session = cast(_FakeSession, service.active_session)
+    assert session.calls == ["connect", "logon"]
+
+    window.start_session_requested.emit()
+    qapp.processEvents()
+
+    assert cast(_FakeSession, service.active_session) is session
+    assert session.calls == ["connect", "logon"]
+
+    window.close()
+
+
+def test_app_controller_reports_load_message_read_errors(
+    qapp: QApplication,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    monkeypatch.setattr(
+        controller_module.QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: ("broken.fix", "FIX text (*.fix *.txt)"),
+    )
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda self, encoding="utf-8": (_ for _ in ()).throw(OSError("boom read")),
+    )
+
+    window.load_message_requested.emit()
+    qapp.processEvents()
+
+    assert "boom read" in window.statusBar().currentMessage()
+    assert "[console] boom read" in window.events_viewer.toPlainText()
+
+    window.close()
+
+
+def test_app_controller_reports_save_message_write_errors(
+    qapp: QApplication,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    window.send_message_tab.set_message_text("8=FIX.4.2|35=0|")
+
+    monkeypatch.setattr(
+        controller_module.QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: ("broken.fix", "FIX text (*.fix *.txt)"),
+    )
+    monkeypatch.setattr(
+        Path,
+        "write_text",
+        lambda self, text, encoding="utf-8": (_ for _ in ()).throw(OSError("boom write")),
+    )
+
+    window.save_message_requested.emit()
+    qapp.processEvents()
+
+    assert "boom write" in window.statusBar().currentMessage()
+    assert "[console] boom write" in window.events_viewer.toPlainText()
 
     window.close()
