@@ -73,7 +73,7 @@ Each backend file owns one primary V1 responsibility:
 |------|-----------|--------|
 | `src/config/session_config.py` | `SessionConfig` + config load/save logic | ☑ done |
 | `src/engine/session.py` | `FIXSession` — socket lifecycle, state machine, sequence numbers, logout/close | ☑ done |
-| `src/engine/service.py` | `FIXEngineService` — UI-facing backend API, callbacks, event routing | ☐ not started |
+| `src/engine/service.py` | `FIXEngineService` — UI-facing backend API, callbacks, event routing | ☑ done |
 | `src/messages/order.py` | `NewOrderSingle` + `ExecutionReport` encode/parse support | ☐ not started |
 
 Tests map to the owning backend areas like this:
@@ -128,7 +128,7 @@ appears to satisfy the written criteria.
 		`threading.Lock`
 	- graceful shutdown sends Logout before closing the TCP connection
 	- implementation uses `threading` only — no `asyncio`
-- [ ] 3. `FIXEngineService` — application-facing backend API
+- [x] 3. `FIXEngineService` — application-facing backend API
 	- create/open/close session methods callable from the UI controller
 	- service owns backend callbacks/events; it imports no UI widgets
 	- exposes state-change, inbound-message, outbound-message, and error hooks
