@@ -13,9 +13,16 @@ from src.ui.main_window import MainWindow
 
 
 class _FakeSession:
-    def __init__(self, config: SessionConfig, *, fail_on_logon: bool = False) -> None:
+    def __init__(
+        self,
+        config: SessionConfig,
+        *,
+        fail_on_logon: bool = False,
+        fail_on_close: bool = False,
+    ) -> None:
         self._config = config
         self._fail_on_logon = fail_on_logon
+        self._fail_on_close = fail_on_close
         self.state = SessionState.DISCONNECTED
         self.calls: list[str] = []
         self.close_reasons: list[str | None] = []
@@ -39,6 +46,8 @@ class _FakeSession:
     def close(self, reason: str | None = None) -> None:
         self.calls.append("close")
         self.close_reasons.append(reason)
+        if self._fail_on_close:
+            raise SessionConnectionError("close failed")
         self.state = SessionState.DISCONNECTED
 
     def next_out_seq_num(self) -> int:
@@ -267,5 +276,56 @@ def test_app_controller_reports_save_message_write_errors(
 
     assert "boom write" in window.statusBar().currentMessage()
     assert "[console] boom write" in window.events_viewer.toPlainText()
+
+    window.close()
+
+
+def test_app_controller_reports_session_switch_close_errors(
+    qapp: QApplication,
+    tmp_path: Path,
+) -> None:
+    service = FIXEngineService(
+        session_factory=lambda config: _FakeSession(
+            config,
+            fail_on_close=config.sender_comp_id == "CLIENT",
+        )
+    )
+    window = MainWindow(
+        engine_service=service,
+        config_path=_create_config_file(tmp_path),
+    )
+    window.show()
+    qapp.processEvents()
+
+    list_widget = window.findChild(QListWidget, "sessionList")
+    assert list_widget is not None
+
+    first_item = list_widget.item(0)
+    first_item.setSelected(True)
+    qapp.processEvents()
+
+    window.start_session_requested.emit()
+    qapp.processEvents()
+
+    window.session_created.emit(
+        {
+            "sender_comp_id": "BUY_SIDE",
+            "target_comp_id": "SELL_SIDE",
+            "fix_version": "FIX.4.4",
+            "session_type": "Initiator",
+            "remote_host": "127.0.0.1",
+            "remote_port": 9878,
+        }
+    )
+    qapp.processEvents()
+
+    list_widget.item(1).setSelected(True)
+    qapp.processEvents()
+
+    window.start_session_requested.emit()
+    qapp.processEvents()
+
+    assert "close failed" in window.statusBar().currentMessage()
+    assert "[console] close failed" in window.events_viewer.toPlainText()
 
     window.close()

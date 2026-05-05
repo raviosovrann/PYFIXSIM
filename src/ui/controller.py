@@ -186,7 +186,11 @@ class AppController(QObject):
         if not self._window.session_list_widget.selected_session_ids():
             self._window.session_list_widget.select_session(session_id)
 
-        return self._ensure_session_for_id(session_id)
+        try:
+            return self._ensure_session_for_id(session_id)
+        except (FIXEngineServiceError, FIXSessionError) as exc:
+            self._on_engine_error(exc)
+            return None
 
     def _render_message_for_editor(self, raw_message: str) -> str:
         return raw_message.replace("\x01", "|")
@@ -258,8 +262,7 @@ class AppController(QObject):
 
     @Slot()
     def _on_start_session_requested(self) -> None:
-        config = self._ensure_selected_session()
-        if config is None:
+        if self._ensure_selected_session() is None:
             return
 
         try:
@@ -280,8 +283,7 @@ class AppController(QObject):
 
     @Slot()
     def _on_restart_session_requested(self) -> None:
-        config = self._ensure_selected_session()
-        if config is None:
+        if self._ensure_selected_session() is None:
             return
 
         try:
