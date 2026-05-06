@@ -203,3 +203,26 @@ def test_send_message_tab_replaces_only_the_current_message_block(
     )
 
     tab.close()
+
+
+def test_send_message_tab_replaces_nearest_message_when_cursor_is_on_trailing_blank_line(
+    qapp: QApplication,
+) -> None:
+    tab = SendMessageTab()
+    tab.show()
+    qapp.processEvents()
+
+    editor = tab.findChild(QPlainTextEdit, "sendMessageEditor")
+    assert editor is not None
+
+    tab.set_message_text("8=FIX.4.4|35=D|11=ORDER_1|\n")
+    cursor = editor.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    editor.setTextCursor(cursor)
+
+    tab.replace_current_message_block("8=FIX.4.4|35=D|11=ORDER_99|")
+    qapp.processEvents()
+
+    assert tab.message_text() == "8=FIX.4.4|35=D|11=ORDER_99|\n"
+
+    tab.close()

@@ -386,3 +386,54 @@ def test_app_controller_opens_structured_editor_and_updates_current_message(
     )
 
     window.close()
+
+
+def test_app_controller_edits_nearest_message_when_cursor_is_on_trailing_blank_line(
+    qapp: QApplication,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    window.send_message_tab.set_message_text(
+        "8=FIX.4.4|35=D|11=ORDER_1|\n8=FIX.4.4|35=F|11=ORDER_2|\n"
+    )
+
+    editor = window.findChild(QPlainTextEdit, "sendMessageEditor")
+    assert editor is not None
+
+    cursor = editor.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    editor.setTextCursor(cursor)
+    qapp.processEvents()
+
+    def _accept_with_changes(dialog) -> int:
+        table = dialog.table_widget()
+        for row in range(table.rowCount()):
+            tag_item = table.item(row, 0)
+            value_item = table.item(row, 1)
+            if tag_item is None or value_item is None:
+                continue
+            if tag_item.text() == "11":
+                value_item.setText("ORDER_99")
+                break
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(
+        controller_module.MessageDetailsDialog,
+        "exec",
+        _accept_with_changes,
+    )
+
+    window.edit_message_requested.emit()
+    qapp.processEvents()
+
+    assert window.send_message_tab.message_text() == (
+        "8=FIX.4.4|35=D|11=ORDER_1|\n"
+        "8=FIX.4.4|35=F|11=ORDER_99|\n"
+    )
+    assert window.statusBar().currentMessage() == "Updated FIX message from structured editor"
+
+    window.close()

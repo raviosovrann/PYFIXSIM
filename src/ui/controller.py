@@ -423,19 +423,20 @@ class AppController(QObject):
     def _on_edit_message_requested(self) -> None:
         self._window.workspace_tabs.setCurrentWidget(self._window.send_message_tab)
         current_block = self._window.send_message_tab.current_message_block()
+        if current_block is None:
+            self.status_message_changed.emit("No FIX message is available to edit")
+            return
+
         dialog = MessageDetailsDialog(self._window)
         dialog.set_message_text(
-            self._window.send_message_tab.editable_message_text(),
+            current_block,
             source_label="Current FIX message",
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         updated_message = dialog.message_text()
-        if current_block:
-            self._window.send_message_tab.replace_current_message_block(updated_message)
-        else:
-            self._window.send_message_tab.set_message_text(updated_message)
+        self._window.send_message_tab.replace_current_message_block(updated_message)
         self._window.send_message_tab.focus_editor()
         self.status_message_changed.emit("Updated FIX message from structured editor")
 

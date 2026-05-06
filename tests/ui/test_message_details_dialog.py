@@ -96,6 +96,31 @@ def test_message_details_dialog_preserves_unparsed_raw_message(
     dialog.close()
 
 
+def test_message_details_dialog_falls_back_to_raw_message_when_field_is_malformed(
+    qapp: QApplication,
+) -> None:
+    raw_message = "35=D|BADFIELD|11=ORDER_42|"
+
+    dialog = MessageDetailsDialog()
+    dialog.set_message_text(raw_message, source_label="Current FIX message")
+    dialog.show()
+    qapp.processEvents()
+
+    table = dialog.findChild(QTableWidget, "messageDetailsTable")
+    assert table is not None
+    assert table.rowCount() == 1
+
+    tag_item = table.item(0, 0)
+    value_item = table.item(0, 1)
+    assert tag_item is not None
+    assert value_item is not None
+    assert tag_item.text() == ""
+    assert value_item.text() == raw_message
+    assert dialog.message_text() == raw_message
+
+    dialog.close()
+
+
 def test_message_details_dialog_allows_inline_fix_edits_and_rebuilds_message(
     qapp: QApplication,
 ) -> None:
@@ -206,6 +231,31 @@ def test_message_details_dialog_adds_blank_rows_before_checksum_and_removes_rows
     qapp.processEvents()
 
     assert table.rowCount() == initial_row_count
+
+    dialog.close()
+
+
+def test_message_details_dialog_summary_ignores_blank_inserted_rows(
+    qapp: QApplication,
+) -> None:
+    dialog = MessageDetailsDialog()
+    dialog.set_message_text(
+        "35=D|11=ORDER_42|",
+        source_label="Current FIX message",
+    )
+    dialog.show()
+    qapp.processEvents()
+
+    summary_label = dialog.findChild(QLabel, "messageDetailsSummaryLabel")
+    add_button = dialog.findChild(QPushButton, "messageDetailsAddTagButton")
+    assert summary_label is not None
+    assert add_button is not None
+    assert "2 field(s)" in summary_label.text()
+
+    QTest.mouseClick(add_button, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+
+    assert "2 field(s)" in summary_label.text()
 
     dialog.close()
 

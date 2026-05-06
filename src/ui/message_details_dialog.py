@@ -118,7 +118,7 @@ class MessageDetailsDialog(QDialog):
     def message_text(self) -> str:
         """Serialize the current table rows back into a FIX-like raw message."""
         rows = self._collect_rows()
-        if len(rows) == 1 and rows[0].tag == "":
+        if self._is_raw_message_rows(rows):
             return rows[0].value.strip()
 
         fields = [f"{row.tag}={row.value}" for row in rows if row.tag]
@@ -174,16 +174,16 @@ class MessageDetailsDialog(QDialog):
                 continue
             if "=" not in stripped_field:
                 logger.debug(
-                    "Skipping malformed FIX field in MessageDetailsDialog: %s",
+                    "Falling back to raw message view due to malformed FIX field: %s",
                     stripped_field,
                 )
-                continue
+                return self._raw_message_rows(raw_message)
 
             tag, value = stripped_field.split("=", 1)
             rows.append(MessageFieldRow(tag=tag, value=value))
 
         if not rows:
-            return [MessageFieldRow(tag="", value=raw_message.strip())]
+            return self._raw_message_rows(raw_message)
 
         return rows
 
@@ -258,6 +258,18 @@ class MessageDetailsDialog(QDialog):
             return "\x01"
         return _DEFAULT_MESSAGE_DELIMITER
 
+    def _is_raw_message_rows(self, rows: list[MessageFieldRow]) -> bool:
+        return len(rows) == 1 and rows[0].tag == ""
+
+    def _raw_message_rows(self, raw_message: str) -> list[MessageFieldRow]:
+        return [MessageFieldRow(tag="", value=raw_message.strip())]
+
+    def _serializable_field_count(self) -> int:
+        rows = self._collect_rows()
+        if self._is_raw_message_rows(rows):
+            return 1 if rows[0].value else 0
+        return sum(1 for row in rows if row.tag)
+
     def _tag_tooltip(self, tag: str) -> str:
         normalized_tag = tag.strip()
         if not normalized_tag:
@@ -271,7 +283,7 @@ class MessageDetailsDialog(QDialog):
     def _update_summary_label(self) -> None:
         if self._has_loaded_message:
             self._summary_label.setText(
-                f"{self._source_label} — displaying {self._table.rowCount()} field(s)"
+                f"{self._source_label} — displaying {self._serializable_field_count()} field(s)"
             )
             return
 
