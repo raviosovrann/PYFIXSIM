@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal, Slot
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QDialog, QFileDialog
 
 from src.config.session_config import (
     SessionConfig,
@@ -20,6 +20,7 @@ from src.engine.service import (
 )
 from src.engine.session import FIXSessionError, SessionState
 from src.messages.order import MessageValidationError, NewOrderSingle
+from src.ui.message_details_dialog import MessageDetailsDialog
 
 if TYPE_CHECKING:
     from src.ui.main_window import MainWindow
@@ -421,8 +422,22 @@ class AppController(QObject):
     @Slot()
     def _on_edit_message_requested(self) -> None:
         self._window.workspace_tabs.setCurrentWidget(self._window.send_message_tab)
+        current_block = self._window.send_message_tab.current_message_block()
+        dialog = MessageDetailsDialog(self._window)
+        dialog.set_message_text(
+            self._window.send_message_tab.editable_message_text(),
+            source_label="Current FIX message",
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        updated_message = dialog.message_text()
+        if current_block:
+            self._window.send_message_tab.replace_current_message_block(updated_message)
+        else:
+            self._window.send_message_tab.set_message_text(updated_message)
         self._window.send_message_tab.focus_editor()
-        self.status_message_changed.emit("Send Message editor focused for editing")
+        self.status_message_changed.emit("Updated FIX message from structured editor")
 
     @Slot()
     def _on_send_current_message_requested(self) -> None:

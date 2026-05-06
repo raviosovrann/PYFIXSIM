@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtWidgets import QApplication, QListWidget, QPlainTextEdit
+from PySide6.QtWidgets import QApplication, QDialog, QListWidget, QPlainTextEdit
 
 import src.ui.controller as controller_module
 from src.config.session_config import SessionConfig, save_config
@@ -331,27 +331,58 @@ def test_app_controller_reports_session_switch_close_errors(
     window.close()
 
 
-def test_app_controller_focuses_send_message_editor_when_edit_requested(
+def test_app_controller_opens_structured_editor_and_updates_current_message(
     qapp: QApplication,
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     window = MainWindow(config_path=_create_config_file(tmp_path))
     window.show()
     qapp.processEvents()
 
+    window.send_message_tab.set_message_text(
+        "8=FIX.4.4|35=D|11=ORDER_1|\n8=FIX.4.4|35=F|11=ORDER_2|"
+    )
     window.workspace_tabs.setCurrentIndex(2)
+
+    editor = window.findChild(QPlainTextEdit, "sendMessageEditor")
+    assert editor is not None
+
+    cursor = editor.textCursor()
+    cursor.movePosition(cursor.MoveOperation.Start)
+    cursor.movePosition(cursor.MoveOperation.Down)
+    editor.setTextCursor(cursor)
     qapp.processEvents()
+
+    def _accept_with_changes(dialog) -> int:
+        table = dialog.table_widget()
+        for row in range(table.rowCount()):
+            tag_item = table.item(row, 0)
+            value_item = table.item(row, 1)
+            if tag_item is None or value_item is None:
+                continue
+            if tag_item.text() == "11":
+                value_item.setText("ORDER_99")
+                break
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(
+        controller_module.MessageDetailsDialog,
+        "exec",
+        _accept_with_changes,
+    )
 
     window.edit_message_requested.emit()
     qapp.processEvents()
 
-    editor = window.findChild(QPlainTextEdit, "sendMessageEditor")
-    assert editor is not None
     assert window.workspace_tabs.currentWidget() is window.send_message_tab
     assert editor.hasFocus() is True
+    assert window.send_message_tab.message_text() == (
+        "8=FIX.4.4|35=D|11=ORDER_1|\n8=FIX.4.4|35=F|11=ORDER_99|"
+    )
     assert (
         window.statusBar().currentMessage()
-        == "Send Message editor focused for editing"
+        == "Updated FIX message from structured editor"
     )
 
     window.close()

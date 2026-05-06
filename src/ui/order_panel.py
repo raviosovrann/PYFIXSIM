@@ -130,6 +130,36 @@ class SendMessageTab(QWidget):
         """Replace the current editor contents with the provided text."""
         self._message_editor.setPlainText(text)
 
+    def editable_message_text(self) -> str | None:
+        """Return the current message block to open in the structured editor."""
+        current_block = self.current_message_block()
+        if current_block:
+            return current_block
+
+        message_text = self.message_text().strip()
+        if not message_text:
+            return None
+        return message_text
+
+    def replace_current_message_block(self, text: str) -> None:
+        """Replace the current message block without rewriting other editor blocks."""
+        current_block_number = self._message_editor.textCursor().blockNumber()
+        message_lines = self.message_text().splitlines()
+        if not message_lines or current_block_number >= len(message_lines):
+            self.set_message_text(text)
+            return
+
+        message_lines[current_block_number] = text
+        self.set_message_text("\n".join(message_lines))
+
+        cursor = self._message_editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        for _ in range(
+            min(current_block_number, max(self._message_editor.blockCount() - 1, 0))
+        ):
+            cursor.movePosition(QTextCursor.MoveOperation.Down)
+        self._message_editor.setTextCursor(cursor)
+
     def focus_editor(self) -> None:
         """Move keyboard focus to the raw message editor."""
         self._message_editor.setFocus(Qt.FocusReason.OtherFocusReason)

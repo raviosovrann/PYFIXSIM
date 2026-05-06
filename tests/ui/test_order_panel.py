@@ -175,3 +175,31 @@ def test_send_message_tab_returns_message_blocks_and_can_focus_editor(
     assert editor.hasFocus() is True
 
     tab.close()
+
+
+def test_send_message_tab_replaces_only_the_current_message_block(
+    qapp: QApplication,
+) -> None:
+    tab = SendMessageTab()
+    tab.show()
+    qapp.processEvents()
+
+    editor = tab.findChild(QPlainTextEdit, "sendMessageEditor")
+    assert editor is not None
+
+    tab.set_message_text(
+        "8=FIX.4.4|35=D|11=ORDER_1|\n8=FIX.4.4|35=F|11=ORDER_2|"
+    )
+    cursor = editor.textCursor()
+    cursor.movePosition(cursor.MoveOperation.Start)
+    cursor.movePosition(cursor.MoveOperation.Down)
+    editor.setTextCursor(cursor)
+
+    tab.replace_current_message_block("8=FIX.4.4|35=F|11=ORDER_99|")
+    qapp.processEvents()
+
+    assert tab.message_text() == (
+        "8=FIX.4.4|35=D|11=ORDER_1|\n8=FIX.4.4|35=F|11=ORDER_99|"
+    )
+
+    tab.close()
