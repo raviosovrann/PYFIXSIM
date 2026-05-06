@@ -130,6 +130,34 @@ class SendMessageTab(QWidget):
         """Replace the current editor contents with the provided text."""
         self._message_editor.setPlainText(text)
 
+    def editable_message_text(self) -> str | None:
+        """Return the current or nearest non-empty message block for editing."""
+        return self.current_message_block()
+
+    def replace_current_message_block(self, text: str) -> None:
+        """Replace the current message block without rewriting other editor blocks."""
+        message_text = self.message_text()
+        if message_text == "":
+            self.set_message_text(text)
+            return
+
+        message_lines = message_text.split("\n")
+        current_block_number = self._nearest_non_empty_block_index(message_lines)
+        if current_block_number is None:
+            self.set_message_text(text)
+            return
+
+        message_lines[current_block_number] = text
+        self.set_message_text("\n".join(message_lines))
+
+        cursor = self._message_editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        for _ in range(
+            min(current_block_number, max(self._message_editor.blockCount() - 1, 0))
+        ):
+            cursor.movePosition(QTextCursor.MoveOperation.Down)
+        self._message_editor.setTextCursor(cursor)
+
     def focus_editor(self) -> None:
         """Move keyboard focus to the raw message editor."""
         self._message_editor.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -153,11 +181,41 @@ class SendMessageTab(QWidget):
         ]
 
     def current_message_block(self) -> str | None:
-        """Return the current non-empty message block under the cursor."""
-        current_text = self._message_editor.textCursor().block().text().strip()
+        """Return the current or nearest non-empty message block under the cursor."""
+        current_block_number = self._nearest_non_empty_block_index(
+            self.message_text().split("\n")
+        )
+        if current_block_number is None:
+            return None
+
+        current_text = self._message_editor.document().findBlockByNumber(
+            current_block_number
+        ).text().strip()
         if not current_text:
             return None
         return current_text
+
+    def _nearest_non_empty_block_index(self, message_lines: list[str]) -> int | None:
+        if not message_lines or all(not line.strip() for line in message_lines):
+            return None
+
+        cursor_block_number = min(
+            self._message_editor.textCursor().blockNumber(),
+            len(message_lines) - 1,
+        )
+
+        if message_lines[cursor_block_number].strip():
+            return cursor_block_number
+
+        for block_number in range(cursor_block_number - 1, -1, -1):
+            if message_lines[block_number].strip():
+                return block_number
+
+        for block_number in range(cursor_block_number + 1, len(message_lines)):
+            if message_lines[block_number].strip():
+                return block_number
+
+        return None
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)

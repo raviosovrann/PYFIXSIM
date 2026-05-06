@@ -3,13 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtWidgets import QApplication, QListWidget, QPlainTextEdit
+from PySide6.QtWidgets import QApplication, QDialog, QListWidget, QPlainTextEdit
 
 import src.ui.controller as controller_module
 from src.config.session_config import SessionConfig, save_config
 from src.engine.service import FIXEngineService
 from src.engine.session import SessionConnectionError, SessionState
 from src.ui.main_window import MainWindow
+
+
+def _valid_fix_message(*, cl_ord_id: str, msg_type: str = "D") -> str:
+    return (
+        f"8=FIX.4.4|9=148|35={msg_type}|34=1080|49=TESTBUY1|"
+        f"52=20180920-18:14:19.508|56=TESTSELL1|11={cl_ord_id}|15=USD|21=2|"
+        "40=1|54=1|55=MSFT|60=20180920-18:14:19.492|10=092|"
+    )
 
 
 class _FakeSession:
@@ -331,27 +339,224 @@ def test_app_controller_reports_session_switch_close_errors(
     window.close()
 
 
-def test_app_controller_focuses_send_message_editor_when_edit_requested(
+def test_app_controller_opens_structured_editor_and_updates_current_message(
     qapp: QApplication,
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     window = MainWindow(config_path=_create_config_file(tmp_path))
     window.show()
     qapp.processEvents()
 
+    window.send_message_tab.set_message_text(
+        f"{_valid_fix_message(cl_ord_id='ORDER_1', msg_type='D')}\n"
+        f"{_valid_fix_message(cl_ord_id='ORDER_2', msg_type='F')}"
+    )
     window.workspace_tabs.setCurrentIndex(2)
+
+    editor = window.findChild(QPlainTextEdit, "sendMessageEditor")
+    assert editor is not None
+
+    cursor = editor.textCursor()
+    cursor.movePosition(cursor.MoveOperation.Start)
+    cursor.movePosition(cursor.MoveOperation.Down)
+    editor.setTextCursor(cursor)
     qapp.processEvents()
+
+    def _accept_with_changes(dialog) -> int:
+        table = dialog.table_widget()
+        for row in range(table.rowCount()):
+            tag_item = table.item(row, 0)
+            value_item = table.item(row, 1)
+            if tag_item is None or value_item is None:
+                continue
+            if tag_item.text() == "11":
+                value_item.setText("ORDER_99")
+                break
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(
+        controller_module.MessageDetailsDialog,
+        "exec",
+        _accept_with_changes,
+    )
 
     window.edit_message_requested.emit()
     qapp.processEvents()
 
-    editor = window.findChild(QPlainTextEdit, "sendMessageEditor")
-    assert editor is not None
     assert window.workspace_tabs.currentWidget() is window.send_message_tab
     assert editor.hasFocus() is True
+    assert window.send_message_tab.message_text() == (
+        f"{_valid_fix_message(cl_ord_id='ORDER_1', msg_type='D')}\n"
+        f"{_valid_fix_message(cl_ord_id='ORDER_99', msg_type='F')}"
+    )
     assert (
         window.statusBar().currentMessage()
-        == "Send Message editor focused for editing"
+        == "Updated FIX message from structured editor"
+    )
+
+    window.close()
+
+
+def test_app_controller_edits_nearest_message_when_cursor_is_on_trailing_blank_line(
+    qapp: QApplication,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    window.send_message_tab.set_message_text(
+        f"{_valid_fix_message(cl_ord_id='ORDER_1', msg_type='D')}\n"
+        f"{_valid_fix_message(cl_ord_id='ORDER_2', msg_type='F')}\n"
+    )
+
+    editor = window.findChild(QPlainTextEdit, "sendMessageEditor")
+    assert editor is not None
+
+    cursor = editor.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    editor.setTextCursor(cursor)
+    qapp.processEvents()
+
+    def _accept_with_changes(dialog) -> int:
+        table = dialog.table_widget()
+        for row in range(table.rowCount()):
+            tag_item = table.item(row, 0)
+            value_item = table.item(row, 1)
+            if tag_item is None or value_item is None:
+                continue
+            if tag_item.text() == "11":
+                value_item.setText("ORDER_99")
+                break
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(
+        controller_module.MessageDetailsDialog,
+        "exec",
+        _accept_with_changes,
+    )
+
+    window.edit_message_requested.emit()
+    qapp.processEvents()
+
+    assert window.send_message_tab.message_text() == (
+        f"{_valid_fix_message(cl_ord_id='ORDER_1', msg_type='D')}\n"
+        f"{_valid_fix_message(cl_ord_id='ORDER_99', msg_type='F')}\n"
+    )
+    assert window.statusBar().currentMessage() == "Updated FIX message from structured editor"
+
+    window.close()
+
+
+def test_app_controller_rejects_structured_edit_for_single_character_input(
+    qapp: QApplication,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    window.send_message_tab.set_message_text("\x01")
+
+    dialog_calls: list[str] = []
+
+    def _record_dialog_open(_dialog: object) -> int:
+        dialog_calls.append("opened")
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(
+        controller_module.MessageDetailsDialog,
+        "exec",
+        _record_dialog_open,
+    )
+
+    window.edit_message_requested.emit()
+    qapp.processEvents()
+
+    assert dialog_calls == []
+    assert (
+        window.statusBar().currentMessage()
+        == "Structured editor requires a complete FIX message."
+    )
+
+    window.close()
+
+
+def test_app_controller_rejects_structured_edit_for_malformed_fix_fields(
+    qapp: QApplication,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    window.send_message_tab.set_message_text(
+        "8=FIX.4.4\x019=148\x0135=D\x0134=1080\x0149=TESTBUY1\x0152=20180920-18:14:19.508"
+        "\x0156=TESTSELL1\x0111=636730640278898634\x0115=USD\x0121=2\x01=\x0140=1"
+        "\x0154=1\x0155=MSFT\x0160=20180920-18:14:19.492\x0110=092\x01"
+    )
+
+    dialog_calls: list[str] = []
+
+    def _record_dialog_open(_dialog: object) -> int:
+        dialog_calls.append("opened")
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(
+        controller_module.MessageDetailsDialog,
+        "exec",
+        _record_dialog_open,
+    )
+
+    window.edit_message_requested.emit()
+    qapp.processEvents()
+
+    assert dialog_calls == []
+    assert (
+        window.statusBar().currentMessage()
+        == "Structured editor requires populated numeric tag=value FIX fields."
+    )
+
+    window.close()
+
+
+def test_app_controller_rejects_structured_edit_when_required_tags_are_missing(
+    qapp: QApplication,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    window.send_message_tab.set_message_text("8=FIX.4.4|35=D|11=ORDER_42|")
+
+    dialog_calls: list[str] = []
+
+    def _record_dialog_open(_dialog: object) -> int:
+        dialog_calls.append("opened")
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(
+        controller_module.MessageDetailsDialog,
+        "exec",
+        _record_dialog_open,
+    )
+
+    window.edit_message_requested.emit()
+    qapp.processEvents()
+
+    assert dialog_calls == []
+    assert (
+        window.statusBar().currentMessage()
+        == (
+            "Structured editor requires FIX tags 8, 9, 34, 35, 49, 52, 56, 60, "
+            "and 10 with values."
+        )
     )
 
     window.close()
