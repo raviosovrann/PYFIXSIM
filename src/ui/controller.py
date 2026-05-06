@@ -20,7 +20,10 @@ from src.engine.service import (
 )
 from src.engine.session import FIXSessionError, SessionState
 from src.messages.order import MessageValidationError, NewOrderSingle
-from src.ui.message_details_dialog import MessageDetailsDialog
+from src.ui.message_details_dialog import (
+    MessageDetailsDialog,
+    validate_fix_message_for_details_dialog,
+)
 
 if TYPE_CHECKING:
     from src.ui.main_window import MainWindow
@@ -425,6 +428,11 @@ class AppController(QObject):
         current_block = self._window.send_message_tab.current_message_block()
         if current_block is None:
             self.status_message_changed.emit("No FIX message is available to edit")
+            return
+
+        validation_error = validate_fix_message_for_details_dialog(current_block)
+        if validation_error is not None:
+            self.status_message_changed.emit(validation_error)
             return
 
         dialog = MessageDetailsDialog(self._window)

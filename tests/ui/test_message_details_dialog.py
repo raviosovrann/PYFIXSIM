@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import src.ui.message_details_dialog as message_details_dialog_module
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QLabel,
     QPushButton,
     QTableWidget,
 )
 
-from src.ui.message_details_dialog import MessageDetailsDialog
+from src.ui.message_details_dialog import (
+    MessageDetailsDialog,
+    validate_fix_message_for_details_dialog,
+)
 from src.ui.theme import get_app_stylesheet
 
 
@@ -78,7 +84,10 @@ def test_message_details_dialog_preserves_unparsed_raw_message(
     qapp: QApplication,
 ) -> None:
     dialog = MessageDetailsDialog()
-    dialog.set_message_text("this is not a FIX message", source_label="Current FIX message")
+    dialog.set_message_text(
+        "this is not a FIX message",
+        source_label="Current FIX message",
+    )
     dialog.show()
     qapp.processEvents()
 
@@ -121,6 +130,34 @@ def test_message_details_dialog_falls_back_to_raw_message_when_field_is_malforme
     dialog.close()
 
 
+def test_message_details_dialog_falls_back_to_raw_message_when_field_has_blank_tag_or_value(
+    qapp: QApplication,
+) -> None:
+    raw_message = (
+        "8=FIX.4.4\x019=148\x0135=D\x0134=1080\x0149=TESTBUY1\x0152=20180920-18:14:19.508"
+        "\x0156=TESTSELL1\x0111=636730640278898634\x0115=USD\x0121=2\x01=\x0140=1"
+        "\x0154=1\x0155=MSFT\x0160=20180920-18:14:19.492\x0110=092\x01"
+    )
+
+    dialog = MessageDetailsDialog()
+    dialog.set_message_text(raw_message, source_label="Current FIX message")
+    dialog.show()
+    qapp.processEvents()
+
+    table = dialog.findChild(QTableWidget, "messageDetailsTable")
+    assert table is not None
+    assert table.rowCount() == 1
+
+    tag_item = table.item(0, 0)
+    value_item = table.item(0, 1)
+    assert tag_item is not None
+    assert value_item is not None
+    assert tag_item.text() == ""
+    assert value_item.text() == raw_message
+
+    dialog.close()
+
+
 def test_message_details_dialog_allows_inline_fix_edits_and_rebuilds_message(
     qapp: QApplication,
 ) -> None:
@@ -149,6 +186,78 @@ def test_message_details_dialog_allows_inline_fix_edits_and_rebuilds_message(
     assert dialog.message_text() == "35=D|11=ORDER_99|58=Initial note|"
 
     dialog.close()
+
+
+def test_message_details_dialog_blocks_save_when_required_field_is_removed(
+    qapp: QApplication,
+    monkeypatch,
+) -> None:
+    dialog = MessageDetailsDialog()
+    dialog.set_message_text(
+        "8=FIX.4.4|9=148|35=D|34=1080|49=TESTBUY1|52=20180920-18:14:19.508|"
+        "56=TESTSELL1|11=636730640278898634|15=USD|21=2|40=1|54=1|55=MSFT|"
+        "60=20180920-18:14:19.492|10=092|",
+        source_label="Current FIX message",
+    )
+    dialog.show()
+    qapp.processEvents()
+
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        message_details_dialog_module.QMessageBox,
+        "warning",
+        lambda _parent, _title, message: warnings.append(message),
+    )
+
+    table = dialog.findChild(QTableWidget, "messageDetailsTable")
+    assert table is not None
+
+    for row in range(table.rowCount()):
+        tag_item = table.item(row, 0)
+        value_item = table.item(row, 1)
+        if tag_item is None or value_item is None:
+            continue
+        if tag_item.text() == "35":
+            tag_item.setText("")
+            value_item.setText("")
+            break
+
+    qapp.processEvents()
+    dialog.accept()
+    qapp.processEvents()
+
+    assert dialog.result() != int(QDialog.DialogCode.Accepted)
+    assert dialog.isVisible() is True
+    assert warnings == [
+        (
+            "Structured editor requires FIX tags 8, 9, 34, 35, 49, 52, 56, 60, "
+            "and 10 with values."
+        )
+    ]
+
+    dialog.close()
+
+
+def test_validate_fix_message_for_details_dialog_rejects_invalid_messages() -> None:
+    assert (
+        validate_fix_message_for_details_dialog("\x01")
+        == "Structured editor requires a complete FIX message."
+    )
+    assert (
+        validate_fix_message_for_details_dialog("hello world")
+        == "Structured editor requires a complete FIX message."
+    )
+    assert (
+        validate_fix_message_for_details_dialog("8=FIX.4.4|9=148|=|")
+        == "Structured editor requires populated numeric tag=value FIX fields."
+    )
+    assert (
+        validate_fix_message_for_details_dialog("8=FIX.4.4|35=D|11=ORDER_42|")
+        == (
+            "Structured editor requires FIX tags 8, 9, 34, 35, 49, 52, 56, 60, "
+            "and 10 with values."
+        )
+    )
 
 
 def test_message_details_dialog_preserves_original_soh_delimiter_after_edit(

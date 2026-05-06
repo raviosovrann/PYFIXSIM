@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -40,6 +41,64 @@ _TAG_NAMES: dict[str, str] = {
 }
 _DEFAULT_MESSAGE_DELIMITER = "|"
 _TRAILER_TAGS = frozenset({"10"})
+_REQUIRED_EDIT_TAGS: tuple[str, ...] = (
+    "8",
+    "9",
+    "34",
+    "35",
+    "49",
+    "52",
+    "56",
+    "60",
+    "10",
+)
+_REQUIRED_EDIT_TAGS_TEXT = ", ".join(_REQUIRED_EDIT_TAGS[:-1]) + ", and 10"
+
+
+def validate_fix_message_for_details_dialog(raw_message: str | None) -> str | None:
+    """Return a user-facing error when a raw message is not safe for structured editing."""
+    if raw_message is None:
+        return "Structured editor requires a complete FIX message."
+
+    normalized_message = raw_message.replace("\x01", _DEFAULT_MESSAGE_DELIMITER).strip()
+    if (
+        len(normalized_message) <= 1
+        or _DEFAULT_MESSAGE_DELIMITER not in normalized_message
+    ):
+        return "Structured editor requires a complete FIX message."
+
+    fields = [
+        field.strip()
+        for field in normalized_message.split(_DEFAULT_MESSAGE_DELIMITER)
+        if field.strip()
+    ]
+    if not fields:
+        return "Structured editor requires a complete FIX message."
+
+    present_required_tags: set[str] = set()
+    for field in fields:
+        if "=" not in field:
+            return "Structured editor requires populated numeric tag=value FIX fields."
+
+        tag, value = field.split("=", 1)
+        normalized_tag = tag.strip()
+        normalized_value = value.strip()
+        if not normalized_tag or not normalized_tag.isdigit() or not normalized_value:
+            return "Structured editor requires populated numeric tag=value FIX fields."
+
+        if normalized_tag in _REQUIRED_EDIT_TAGS:
+            present_required_tags.add(normalized_tag)
+
+    missing_tags = [
+        tag for tag in _REQUIRED_EDIT_TAGS if tag not in present_required_tags
+    ]
+    if missing_tags:
+        return (
+            "Structured editor requires FIX tags "
+            f"{_REQUIRED_EDIT_TAGS_TEXT} with values."
+        )
+
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,7 +239,15 @@ class MessageDetailsDialog(QDialog):
                 return self._raw_message_rows(raw_message)
 
             tag, value = stripped_field.split("=", 1)
-            rows.append(MessageFieldRow(tag=tag, value=value))
+            normalized_tag = tag.strip()
+            if not normalized_tag or not value.strip():
+                logger.debug(
+                    "Falling back to raw message view due to incomplete FIX field: %s",
+                    stripped_field,
+                )
+                return self._raw_message_rows(raw_message)
+
+            rows.append(MessageFieldRow(tag=normalized_tag, value=value))
 
         if not rows:
             return self._raw_message_rows(raw_message)
@@ -335,6 +402,10 @@ class MessageDetailsDialog(QDialog):
 
     @Slot()
     def accept(self) -> None:
+        validation_error = validate_fix_message_for_details_dialog(self.message_text())
+        if validation_error is not None:
+            QMessageBox.warning(self, "Invalid FIX Message", validation_error)
+            return
         super().accept()
 
     def _create_item(
