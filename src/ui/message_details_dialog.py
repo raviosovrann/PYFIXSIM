@@ -330,6 +330,7 @@ class MessageDetailsDialog(QDialog):
         finally:
             self._is_updating_table = False
 
+        self._update_summary_label()
         self._table.resizeRowsToContents()
 
     @Slot()

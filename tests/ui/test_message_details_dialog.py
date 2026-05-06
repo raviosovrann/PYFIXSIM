@@ -260,6 +260,46 @@ def test_message_details_dialog_summary_ignores_blank_inserted_rows(
     dialog.close()
 
 
+def test_message_details_dialog_summary_updates_when_blank_row_becomes_serializable(
+    qapp: QApplication,
+) -> None:
+    dialog = MessageDetailsDialog()
+    dialog.set_message_text(
+        "35=D|11=ORDER_42|",
+        source_label="Current FIX message",
+    )
+    dialog.show()
+    qapp.processEvents()
+
+    summary_label = dialog.findChild(QLabel, "messageDetailsSummaryLabel")
+    add_button = dialog.findChild(QPushButton, "messageDetailsAddTagButton")
+    table = dialog.findChild(QTableWidget, "messageDetailsTable")
+    assert summary_label is not None
+    assert add_button is not None
+    assert table is not None
+
+    QTest.mouseClick(add_button, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+
+    editable_row = table.rowCount() - 1
+    checksum_item = table.item(editable_row, 0)
+    if checksum_item is not None and checksum_item.text() == "10":
+        editable_row -= 1
+
+    tag_item = table.item(editable_row, 0)
+    value_item = table.item(editable_row, 1)
+    assert tag_item is not None
+    assert value_item is not None
+
+    tag_item.setText("58")
+    value_item.setText("Test note")
+    qapp.processEvents()
+
+    assert "3 field(s)" in summary_label.text()
+
+    dialog.close()
+
+
 def test_message_details_dialog_uses_dark_alternating_row_colors(
     qapp: QApplication,
 ) -> None:
