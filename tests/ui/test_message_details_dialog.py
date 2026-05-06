@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QLabel, QTableWidget
 
 from src.ui.message_details_dialog import MessageDetailsDialog
@@ -29,7 +30,7 @@ def test_message_details_dialog_shows_placeholder_rows(qapp: QApplication) -> No
     dialog.close()
 
 
-def test_message_details_dialog_parses_message_and_keeps_admin_rows(
+def test_message_details_dialog_parses_only_fields_present_in_message(
     qapp: QApplication,
 ) -> None:
     dialog = MessageDetailsDialog()
@@ -57,11 +58,7 @@ def test_message_details_dialog_parses_message_and_keeps_admin_rows(
         tags.append(tag_item.text())
         value_column_texts.append(value_item.text())
 
-    assert tags[0] == "8"
-    assert "9" in tags
-    assert "35" in tags
-    assert "11" in tags
-    assert tags[-1] == "10"
+    assert tags == ["35", "11", "58"]
 
     assert "ORDER_42" in value_column_texts
     assert "X" * 120 in value_column_texts
@@ -69,10 +66,63 @@ def test_message_details_dialog_parses_message_and_keeps_admin_rows(
     dialog.close()
 
 
-def test_app_stylesheet_defines_dark_item_view_alternating_rows() -> None:
-    stylesheet = get_app_stylesheet()
+def test_message_details_dialog_preserves_unparsed_raw_message(
+    qapp: QApplication,
+) -> None:
+    dialog = MessageDetailsDialog()
+    dialog.set_message_text("this is not a FIX message", source_label="Current FIX message")
+    dialog.show()
+    qapp.processEvents()
 
-    assert "QAbstractItemView" in stylesheet
-    assert "alternate-background-color: #101419;" in stylesheet
-    assert "gridline-color: #343a40;" in stylesheet
-    assert "QHeaderView::section" in stylesheet
+    table = dialog.findChild(QTableWidget, "messageDetailsTable")
+    assert table is not None
+    assert table.rowCount() == 1
+
+    tag_item = table.item(0, 0)
+    name_item = table.item(0, 1)
+    value_item = table.item(0, 2)
+    assert tag_item is not None
+    assert name_item is not None
+    assert value_item is not None
+    assert tag_item.text() == ""
+    assert name_item.text() == "Raw message"
+    assert value_item.text() == "this is not a FIX message"
+
+    dialog.close()
+
+
+def test_message_details_dialog_uses_dark_alternating_row_colors(
+    qapp: QApplication,
+) -> None:
+    previous_stylesheet = qapp.styleSheet()
+    dialog = MessageDetailsDialog()
+
+    qapp.setStyleSheet(get_app_stylesheet())
+    dialog.show()
+    qapp.processEvents()
+
+    table = dialog.findChild(QTableWidget, "messageDetailsTable")
+    assert table is not None
+
+    first_item = table.item(0, 2)
+    second_item = table.item(1, 2)
+    assert first_item is not None
+    assert second_item is not None
+
+    first_rect = table.visualItemRect(first_item)
+    second_rect = table.visualItemRect(second_item)
+    image = table.viewport().grab().toImage()
+
+    first_color = image.pixelColor(max(first_rect.left() + 4, first_rect.right() - 12), first_rect.center().y())
+    second_color = image.pixelColor(max(second_rect.left() + 4, second_rect.right() - 12), second_rect.center().y())
+
+    assert _is_dark(first_color)
+    assert _is_dark(second_color)
+    assert first_color != second_color
+
+    dialog.close()
+    qapp.setStyleSheet(previous_stylesheet)
+
+
+def _is_dark(color: QColor) -> bool:
+    return color.lightness() < 80

@@ -151,28 +151,15 @@ class MessageDetailsDialog(QDialog):
             )
 
         if not rows:
-            return self._placeholder_rows()
+            return [
+                MessageFieldRow(
+                    tag="",
+                    name="Raw message",
+                    value=normalized_message.strip(),
+                )
+            ]
 
-        return self._ensure_admin_rows(rows)
-
-    def _ensure_admin_rows(self, rows: list[MessageFieldRow]) -> list[MessageFieldRow]:
-        tags = {row.tag for row in rows}
-        normalized_rows = list(rows)
-
-        if "8" not in tags:
-            normalized_rows.insert(0, MessageFieldRow("8", _TAG_NAMES["8"], ""))
-
-        if "9" not in tags:
-            insert_index = 1 if normalized_rows and normalized_rows[0].tag == "8" else 0
-            normalized_rows.insert(
-                insert_index,
-                MessageFieldRow("9", _TAG_NAMES["9"], ""),
-            )
-
-        if "10" not in tags:
-            normalized_rows.append(MessageFieldRow("10", _TAG_NAMES["10"], ""))
-
-        return normalized_rows
+        return rows
 
     def _placeholder_rows(self) -> list[MessageFieldRow]:
         return [
