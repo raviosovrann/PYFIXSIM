@@ -463,6 +463,10 @@ class MainWindow(QMainWindow):
     def _seed_placeholder_content(self) -> None:
         self.events_viewer_panel.clear_events()
         self.append_event("[console] FIX Client Simulator is ready.")
+        self.append_event("[console] Local demo target defaults to 127.0.0.1:9878.")
+        self.append_event(
+            "[console] Start the local FIX acceptor from a terminal before connecting."
+        )
 
     def _ensure_create_session_dialog(self) -> CreateSessionDialog:
         dialog = self._create_session_dialog

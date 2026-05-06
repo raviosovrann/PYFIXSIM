@@ -19,7 +19,7 @@ from src.engine.service import (
     FIXEngineServiceError,
 )
 from src.engine.session import FIXSessionError, SessionState
-from src.messages.order import MessageValidationError, NewOrderSingle
+from src.messages.order import ExecutionReport, MessageValidationError, NewOrderSingle
 from src.ui.message_details_dialog import (
     MessageDetailsDialog,
     validate_fix_message_for_send,
@@ -36,6 +36,7 @@ class EngineAdapter(QObject):
     state_changed = Signal(object)
     outbound_message = Signal(object)
     inbound_message = Signal(object)
+    execution_report_received = Signal(object)
     system_message = Signal(object)
     error_raised = Signal(object)
 
@@ -97,6 +98,7 @@ class AppController(QObject):
         self._engine_adapter.state_changed.connect(self._on_engine_state_changed)
         self._engine_adapter.outbound_message.connect(self._on_outbound_message)
         self._engine_adapter.inbound_message.connect(self._on_inbound_message)
+        self._engine_adapter.execution_report_received.connect(self._on_execution_report)
         self._engine_adapter.system_message.connect(self._on_system_message)
         self._engine_adapter.error_raised.connect(self._on_engine_error)
 
@@ -108,6 +110,9 @@ class AppController(QObject):
         )
         self._engine_service.register_inbound_message_handler(
             self._engine_adapter.inbound_message.emit
+        )
+        self._engine_service.register_execution_report_handler(
+            self._engine_adapter.execution_report_received.emit
         )
         self._engine_service.register_system_message_handler(
             self._engine_adapter.system_message.emit
@@ -222,6 +227,51 @@ class AppController(QObject):
     def _render_message_for_editor(self, raw_message: str) -> str:
         return raw_message.replace("\x01", "|")
 
+    def _parse_fix_fields(self, raw_message: str) -> dict[str, str]:
+        fields: dict[str, str] = {}
+        for raw_field in raw_message.split("\x01"):
+            normalized_field = raw_field.strip()
+            if not normalized_field or "=" not in normalized_field:
+                continue
+
+            tag, value = normalized_field.split("=", 1)
+            normalized_tag = tag.strip()
+            if not normalized_tag:
+                continue
+
+            fields[normalized_tag] = value.strip()
+
+        return fields
+
+    def _new_order_single_from_message_block(
+        self,
+        message_block: str,
+    ) -> NewOrderSingle | None:
+        fields = self._parse_fix_fields(message_block)
+        if fields.get("35") != "D":
+            return None
+
+        required_tags = ("11", "38", "40", "54", "55")
+        if any(not fields.get(tag) for tag in required_tags):
+            return None
+
+        try:
+            return NewOrderSingle(
+                ClOrdID=fields["11"],
+                Symbol=fields["55"],
+                Side=fields["54"],
+                OrderQty=int(fields["38"]),
+                OrdType=fields["40"],
+                Price=float(fields["44"]) if fields.get("44") else None,
+                HandlInst=fields.get("21") or "1",
+                Account=fields.get("1") or "",
+                TimeInForce=fields.get("59") or "",
+                Text=fields.get("58") or "",
+                TransactTime=fields.get("60") or None,
+            )
+        except (MessageValidationError, ValueError):
+            return None
+
     def _send_message_blocks(self, message_blocks: list[str]) -> None:
         if not message_blocks:
             self.status_message_changed.emit("No FIX messages are available to send")
@@ -241,6 +291,13 @@ class AppController(QObject):
         try:
             self._engine_service.open_session()
             for message_block in message_blocks:
+                structured_order = self._new_order_single_from_message_block(
+                    message_block
+                )
+                if structured_order is not None:
+                    self._engine_service.send_new_order_single(structured_order)
+                    continue
+
                 self._engine_service.send_raw_message(message_block)
         except (FIXEngineServiceError, FIXSessionError, MessageValidationError) as exc:
             self._on_engine_error(exc)
@@ -546,6 +603,20 @@ class AppController(QObject):
         )
         self.event_logged.emit(
             f"[incoming] {event.session_id} | {event.message}{raw_message}"
+        )
+
+    @Slot(object)
+    def _on_execution_report(self, report_payload: object) -> None:
+        report = cast(ExecutionReport, report_payload)
+        self._window.events_viewer_panel.append_execution_report(report)
+        self.event_logged.emit(
+            "[incoming] Parsed ExecutionReport"
+            f" | ClOrdID={report.ClOrdID}"
+            f" | Symbol={report.Symbol}"
+            f" | OrdStatus={report.OrdStatus}"
+            f" | CumQty={report.CumQty}"
+            f" | LeavesQty={report.LeavesQty}"
+            f" | AvgPx={report.AvgPx}"
         )
 
     @Slot(object)

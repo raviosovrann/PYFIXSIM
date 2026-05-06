@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from src.messages.order import ExecutionReport
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QCheckBox, QLineEdit
+from PySide6.QtWidgets import QApplication, QCheckBox, QLineEdit, QTableWidget
 
 from src.ui.message_log import EventsViewer
 
@@ -75,5 +76,54 @@ def test_events_viewer_timestamp_toggle_changes_rendered_lines(
     timestamp_checkbox.click()
     qapp.processEvents()
     assert widget.toPlainText() == "[console] Test line"
+
+    widget.close()
+
+
+def test_events_viewer_records_execution_reports_in_structured_table(
+    qapp: QApplication,
+) -> None:
+    widget = EventsViewer()
+    widget.show()
+    qapp.processEvents()
+
+    widget.append_execution_report(
+        ExecutionReport(
+            OrderID="BROKER_ORDER_1",
+            ExecID="EXEC_1",
+            ExecType="2",
+            OrdStatus="2",
+            ClOrdID="ORDER_1",
+            Symbol="AAPL",
+            Side="1",
+            LeavesQty=0,
+            CumQty=100,
+            AvgPx=25.5,
+            OrderQty=100,
+            LastQty=100,
+            LastPx=25.5,
+            TransactTime="20260506-12:30:45.000",
+            Text="Accepted by local FIX acceptor",
+        )
+    )
+    qapp.processEvents()
+
+    table = widget.findChild(QTableWidget, "executionReportTable")
+    assert table is not None
+    assert table.rowCount() == 1
+    cl_ord_id_item = table.item(0, 1)
+    symbol_item = table.item(0, 2)
+    avg_px_item = table.item(0, 6)
+
+    assert cl_ord_id_item is not None
+    assert cl_ord_id_item.text() == "ORDER_1"
+    assert symbol_item is not None
+    assert symbol_item.text() == "AAPL"
+    assert avg_px_item is not None
+    assert avg_px_item.text() == "25.5"
+
+    widget.clear_events()
+    qapp.processEvents()
+    assert table.rowCount() == 0
 
     widget.close()

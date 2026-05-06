@@ -83,10 +83,10 @@ def test_create_session_dialog_exports_and_submits_valid_configuration(
     assert remote_host_edit is not None
     assert export_button is not None
     assert button_box is not None
+    assert remote_host_edit.text() == "127.0.0.1"
 
     QTest.keyClicks(sender_comp_id_edit, "BUY_SIDE")
     QTest.keyClicks(target_comp_id_edit, "SELL_SIDE")
-    QTest.keyClicks(remote_host_edit, "127.0.0.1")
     qapp.processEvents()
 
     QTest.mouseClick(export_button, Qt.MouseButton.LeftButton)

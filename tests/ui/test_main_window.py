@@ -219,9 +219,11 @@ def test_main_window_opens_create_session_dialog_and_adds_session(
     assert remote_host_edit is not None
     assert button_box is not None
     assert session_combo is not None
+    assert remote_host_edit.text() == "127.0.0.1"
 
     QTest.keyClicks(sender_comp_id_edit, "ALGO_DESK")
     QTest.keyClicks(target_comp_id_edit, "EXEC_BROKER")
+    remote_host_edit.clear()
     QTest.keyClicks(remote_host_edit, "10.0.0.55")
     qapp.processEvents()
 

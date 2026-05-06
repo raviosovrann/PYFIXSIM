@@ -4,7 +4,13 @@ import time
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtWidgets import QApplication, QDialog, QListWidget, QPlainTextEdit
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QListWidget,
+    QPlainTextEdit,
+    QTableWidget,
+)
 import simplefix  # type: ignore[import-untyped]
 
 import src.ui.controller as controller_module
@@ -450,6 +456,43 @@ def test_app_controller_creates_soh_delimited_fix_message(
     window.close()
 
 
+def test_app_controller_routes_created_orders_through_typed_send_path(
+    qapp: QApplication,
+    tmp_path: Path,
+) -> None:
+    service = FIXEngineService(session_factory=_FakeSession)
+    window = MainWindow(
+        engine_service=service,
+        config_path=_create_config_file(tmp_path),
+    )
+    window.show()
+    qapp.processEvents()
+
+    list_widget = window.findChild(QListWidget, "sessionList")
+    assert list_widget is not None
+
+    first_item = list_widget.item(0)
+    first_item.setSelected(True)
+    qapp.processEvents()
+
+    window.create_message_requested.emit()
+    window.send_current_message_requested.emit()
+    qapp.processEvents()
+
+    event_text = window.events_viewer.toPlainText()
+    assert "NewOrderSingle 11=ORDER_" in event_text
+    assert "Sent FIX message 35=D" not in event_text
+
+    session = cast(_FakeSession, service.active_session)
+    assert session is not None
+    assert any(
+        b"35=D" in bytes(cast(simplefix.FixMessage, message).encode())
+        for message in session.sent_messages
+    )
+
+    window.close()
+
+
 def test_app_controller_logs_execution_report_from_real_acceptor(
     qapp: QApplication,
     tmp_path: Path,
@@ -468,7 +511,9 @@ def test_app_controller_logs_execution_report_from_real_acceptor(
     try:
         qapp.processEvents()
         list_widget = window.findChild(QListWidget, "sessionList")
+        execution_report_table = window.findChild(QTableWidget, "executionReportTable")
         assert list_widget is not None
+        assert execution_report_table is not None
 
         first_item = list_widget.item(0)
         first_item.setSelected(True)
@@ -481,13 +526,20 @@ def test_app_controller_logs_execution_report_from_real_acceptor(
         deadline = time.monotonic() + 2.0
         while time.monotonic() < deadline:
             qapp.processEvents()
-            if "ExecutionReport" in window.events_viewer.toPlainText():
+            if execution_report_table.rowCount() > 0:
                 break
 
         assert "ExecutionReport" in window.events_viewer.toPlainText()
         assert "Connected to 127.0.0.1" in window.events_viewer.toPlainText()
         assert "Sent Logon" in window.events_viewer.toPlainText()
         assert "NewOrderSingle" in window.events_viewer.toPlainText()
+        assert execution_report_table.rowCount() >= 1
+        symbol_item = execution_report_table.item(0, 2)
+        status_item = execution_report_table.item(0, 3)
+        assert symbol_item is not None
+        assert symbol_item.text() == "AAPL"
+        assert status_item is not None
+        assert status_item.text() == "2"
     finally:
         window.close()
         acceptor.stop()

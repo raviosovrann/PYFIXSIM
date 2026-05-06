@@ -1,6 +1,6 @@
 [SESSION]
 Host=127.0.0.1
-Port=9876
+Port=9878
 SenderCompID=CLIENT
 TargetCompID=SERVER
 HeartBtInt=30
