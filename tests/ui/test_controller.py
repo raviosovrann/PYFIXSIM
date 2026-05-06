@@ -462,10 +462,15 @@ def test_app_controller_rejects_structured_edit_for_single_character_input(
     window.send_message_tab.set_message_text("\x01")
 
     dialog_calls: list[str] = []
+
+    def _record_dialog_open(_dialog: object) -> int:
+        dialog_calls.append("opened")
+        return int(QDialog.DialogCode.Accepted)
+
     monkeypatch.setattr(
         controller_module.MessageDetailsDialog,
         "exec",
-        lambda self: dialog_calls.append("opened") or int(QDialog.DialogCode.Accepted),
+        _record_dialog_open,
     )
 
     window.edit_message_requested.emit()
@@ -496,10 +501,15 @@ def test_app_controller_rejects_structured_edit_for_malformed_fix_fields(
     )
 
     dialog_calls: list[str] = []
+
+    def _record_dialog_open(_dialog: object) -> int:
+        dialog_calls.append("opened")
+        return int(QDialog.DialogCode.Accepted)
+
     monkeypatch.setattr(
         controller_module.MessageDetailsDialog,
         "exec",
-        lambda self: dialog_calls.append("opened") or int(QDialog.DialogCode.Accepted),
+        _record_dialog_open,
     )
 
     window.edit_message_requested.emit()
@@ -526,10 +536,15 @@ def test_app_controller_rejects_structured_edit_when_required_tags_are_missing(
     window.send_message_tab.set_message_text("8=FIX.4.4|35=D|11=ORDER_42|")
 
     dialog_calls: list[str] = []
+
+    def _record_dialog_open(_dialog: object) -> int:
+        dialog_calls.append("opened")
+        return int(QDialog.DialogCode.Accepted)
+
     monkeypatch.setattr(
         controller_module.MessageDetailsDialog,
         "exec",
-        lambda self: dialog_calls.append("opened") or int(QDialog.DialogCode.Accepted),
+        _record_dialog_open,
     )
 
     window.edit_message_requested.emit()
