@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtWidgets import QApplication, QListWidget
+from PySide6.QtWidgets import QApplication, QListWidget, QPlainTextEdit
 
 import src.ui.controller as controller_module
 from src.config.session_config import SessionConfig, save_config
@@ -327,5 +327,31 @@ def test_app_controller_reports_session_switch_close_errors(
 
     assert "close failed" in window.statusBar().currentMessage()
     assert "[console] close failed" in window.events_viewer.toPlainText()
+
+    window.close()
+
+
+def test_app_controller_focuses_send_message_editor_when_edit_requested(
+    qapp: QApplication,
+    tmp_path: Path,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    window.workspace_tabs.setCurrentIndex(2)
+    qapp.processEvents()
+
+    window.edit_message_requested.emit()
+    qapp.processEvents()
+
+    editor = window.findChild(QPlainTextEdit, "sendMessageEditor")
+    assert editor is not None
+    assert window.workspace_tabs.currentWidget() is window.send_message_tab
+    assert editor.hasFocus() is True
+    assert (
+        window.statusBar().currentMessage()
+        == "Send Message editor focused for editing"
+    )
 
     window.close()

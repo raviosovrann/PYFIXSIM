@@ -242,11 +242,21 @@ def get_app_stylesheet() -> str:
 
     QAbstractItemView {
         background-color: #14191f;
+        alternate-background-color: #101419;
         color: #f5f7fa;
         border: 1px solid #414851;
+        gridline-color: #343a40;
         selection-background-color: #2f5f8a;
         selection-color: #f8fbff;
         outline: none;
+    }
+
+    QHeaderView::section {
+        background-color: #1b2128;
+        color: #f3f5f7;
+        border: 1px solid #343a40;
+        padding: 4px 6px;
+        font-weight: 600;
     }
 
     QSplitter::handle {
