@@ -194,9 +194,9 @@ def test_message_details_dialog_blocks_save_when_required_field_is_removed(
 ) -> None:
     dialog = MessageDetailsDialog()
     dialog.set_message_text(
-        "8=FIX.4.4|9=148|35=D|34=1080|49=TESTBUY1|52=20180920-18:14:19.508|"
-        "56=TESTSELL1|11=636730640278898634|15=USD|21=2|40=1|54=1|55=MSFT|"
-        "60=20180920-18:14:19.492|10=092|",
+        "8=FIX.4.4\x019=148\x0135=D\x0134=1080\x0149=TESTBUY1\x0152=20180920-18:14:19.508\x01"
+        "56=TESTSELL1\x0111=636730640278898634\x0115=USD\x0121=2\x0140=1\x0154=1\x0155=MSFT\x01"
+        "60=20180920-18:14:19.492\x0110=092\x01",
         source_label="Current FIX message",
     )
     dialog.show()
@@ -249,14 +249,21 @@ def test_validate_fix_message_for_details_dialog_rejects_invalid_messages() -> N
     )
     assert (
         validate_fix_message_for_details_dialog("8=FIX.4.4|9=148|=|")
-        == "Structured editor requires populated numeric tag=value FIX fields."
+        == "Structured editor requires FIX fields to be separated by <SOH> characters."
     )
     assert (
-        validate_fix_message_for_details_dialog("8=FIX.4.4|35=D|11=ORDER_42|")
+        validate_fix_message_for_details_dialog("8=FIX.4.4\x0135=D\x0111=ORDER_42\x01")
         == (
             "Structured editor requires FIX tags 8, 9, 34, 35, 49, 52, 56, 60, "
             "and 10 with values."
         )
+    )
+
+
+def test_validate_fix_message_for_details_dialog_rejects_pipe_delimited_message() -> None:
+    assert (
+        validate_fix_message_for_details_dialog("8=FIX.4.2|9=144|35=D|10=096|")
+        == "Structured editor requires FIX fields to be separated by <SOH> characters."
     )
 
 

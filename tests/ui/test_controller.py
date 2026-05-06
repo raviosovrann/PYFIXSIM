@@ -14,9 +14,9 @@ from src.ui.main_window import MainWindow
 
 def _valid_fix_message(*, cl_ord_id: str, msg_type: str = "D") -> str:
     return (
-        f"8=FIX.4.4|9=148|35={msg_type}|34=1080|49=TESTBUY1|"
-        f"52=20180920-18:14:19.508|56=TESTSELL1|11={cl_ord_id}|15=USD|21=2|"
-        "40=1|54=1|55=MSFT|60=20180920-18:14:19.492|10=092|"
+        f"8=FIX.4.4\x019=148\x0135={msg_type}\x0134=1080\x0149=TESTBUY1\x01"
+        f"52=20180920-18:14:19.508\x0156=TESTSELL1\x0111={cl_ord_id}\x0115=USD\x0121=2\x01"
+        "40=1\x0154=1\x0155=MSFT\x0160=20180920-18:14:19.492\x0110=092\x01"
     )
 
 
@@ -398,6 +398,36 @@ def test_app_controller_opens_structured_editor_and_updates_current_message(
     window.close()
 
 
+def test_app_controller_creates_soh_delimited_fix_message(
+    qapp: QApplication,
+    tmp_path: Path,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    list_widget = window.findChild(QListWidget, "sessionList")
+    assert list_widget is not None
+
+    first_item = list_widget.item(0)
+    first_item.setSelected(True)
+    qapp.processEvents()
+
+    window.create_message_requested.emit()
+    qapp.processEvents()
+
+    created_message = window.send_message_tab.message_text()
+    assert "\x01" in created_message
+    assert "|" not in created_message
+    assert created_message.startswith("8=FIX.4.2\x01")
+    assert (
+        window.statusBar().currentMessage()
+        == "Created a NewOrderSingle template in the editor"
+    )
+
+    window.close()
+
+
 def test_app_controller_edits_nearest_message_when_cursor_is_on_trailing_blank_line(
     qapp: QApplication,
     tmp_path: Path,
@@ -445,7 +475,10 @@ def test_app_controller_edits_nearest_message_when_cursor_is_on_trailing_blank_l
         f"{_valid_fix_message(cl_ord_id='ORDER_1', msg_type='D')}\n"
         f"{_valid_fix_message(cl_ord_id='ORDER_99', msg_type='F')}\n"
     )
-    assert window.statusBar().currentMessage() == "Updated FIX message from structured editor"
+    assert (
+        window.statusBar().currentMessage()
+        == "Updated FIX message from structured editor"
+    )
 
     window.close()
 
@@ -533,7 +566,7 @@ def test_app_controller_rejects_structured_edit_when_required_tags_are_missing(
     window.show()
     qapp.processEvents()
 
-    window.send_message_tab.set_message_text("8=FIX.4.4|35=D|11=ORDER_42|")
+    window.send_message_tab.set_message_text("8=FIX.4.4\x0135=D\x0111=ORDER_42\x01")
 
     dialog_calls: list[str] = []
 
@@ -557,6 +590,45 @@ def test_app_controller_rejects_structured_edit_when_required_tags_are_missing(
             "Structured editor requires FIX tags 8, 9, 34, 35, 49, 52, 56, 60, "
             "and 10 with values."
         )
+    )
+
+    window.close()
+
+
+def test_app_controller_rejects_structured_edit_for_pipe_delimited_message(
+    qapp: QApplication,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    window.send_message_tab.set_message_text(
+        "8=FIX.4.2|9=144|35=D|49=TEST_SENDER1|56=TEST_TARGET|34=1|"
+        "52=20260506-03:29:38.134|11=ORDER_232938|21=1|55=AAPL|54=1|"
+        "60=20260506-03:29:38.134|38=100|40=2|44=25.5|10=096|"
+    )
+
+    dialog_calls: list[str] = []
+
+    def _record_dialog_open(_dialog: object) -> int:
+        dialog_calls.append("opened")
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(
+        controller_module.MessageDetailsDialog,
+        "exec",
+        _record_dialog_open,
+    )
+
+    window.edit_message_requested.emit()
+    qapp.processEvents()
+
+    assert dialog_calls == []
+    assert (
+        window.statusBar().currentMessage()
+        == "Structured editor requires FIX fields to be separated by <SOH> characters."
     )
 
     window.close()

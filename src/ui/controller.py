@@ -366,9 +366,7 @@ class AppController(QObject):
             Price=25.5,
         )
         fix_message = order.to_fix_message(config, MsgSeqNum=config.out_seq_num)
-        raw_message = self._render_message_for_editor(
-            bytes(fix_message.encode()).decode("utf-8", errors="replace")
-        )
+        raw_message = bytes(fix_message.encode()).decode("utf-8", errors="replace")
         self._window.send_message_tab.set_message_text(raw_message)
         self._window.send_message_tab.focus_editor()
         self.status_message_changed.emit(

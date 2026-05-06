@@ -40,6 +40,7 @@ _TAG_NAMES: dict[str, str] = {
     "60": "TransactTime",
 }
 _DEFAULT_MESSAGE_DELIMITER = "|"
+_FIX_MESSAGE_DELIMITER = "\x01"
 _TRAILER_TAGS = frozenset({"10"})
 _REQUIRED_EDIT_TAGS: tuple[str, ...] = (
     "8",
@@ -60,16 +61,21 @@ def validate_fix_message_for_details_dialog(raw_message: str | None) -> str | No
     if raw_message is None:
         return "Structured editor requires a complete FIX message."
 
-    normalized_message = raw_message.replace("\x01", _DEFAULT_MESSAGE_DELIMITER).strip()
-    if (
-        len(normalized_message) <= 1
-        or _DEFAULT_MESSAGE_DELIMITER not in normalized_message
-    ):
+    normalized_message = raw_message.strip()
+    if len(normalized_message) <= 1:
+        return "Structured editor requires a complete FIX message."
+
+    if _FIX_MESSAGE_DELIMITER not in raw_message:
+        if _DEFAULT_MESSAGE_DELIMITER in raw_message:
+            return (
+                "Structured editor requires FIX fields to be separated by "
+                "<SOH> characters."
+            )
         return "Structured editor requires a complete FIX message."
 
     fields = [
         field.strip()
-        for field in normalized_message.split(_DEFAULT_MESSAGE_DELIMITER)
+        for field in raw_message.split(_FIX_MESSAGE_DELIMITER)
         if field.strip()
     ]
     if not fields:
