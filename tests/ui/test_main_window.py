@@ -66,6 +66,12 @@ def test_main_window_widget_interactions(qapp: QApplication, tmp_path: Path) -> 
     menu_titles = [action.text() for action in window.menuBar().actions()]
     assert menu_titles == ["Session", "Message", "Events Viewer", "Options", "Help"]
 
+    assert _find_menu_action(window, "Message", "Create").text() == "Create"
+    assert _find_menu_action(window, "Message", "Load").text() == "Load"
+    assert _find_menu_action(window, "Message", "Save").text() == "Save"
+    assert _find_menu_action(window, "Message", "Edit").text() == "Edit"
+    assert _find_menu_action(window, "Message", "Send batch").text() == "Send batch"
+
     tab_titles = [
         window.workspace_tabs.tabText(index)
         for index in range(window.workspace_tabs.count())

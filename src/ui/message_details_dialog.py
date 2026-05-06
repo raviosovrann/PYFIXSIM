@@ -56,6 +56,27 @@ _REQUIRED_EDIT_TAGS: tuple[str, ...] = (
 _REQUIRED_EDIT_TAGS_TEXT = ", ".join(_REQUIRED_EDIT_TAGS[:-1]) + ", and 10"
 
 
+def _contains_fix_message_delimiter(raw_message: str) -> bool:
+    return _FIX_MESSAGE_DELIMITER in raw_message
+
+
+def _contains_pipe_delimiter(raw_message: str) -> bool:
+    return _DEFAULT_MESSAGE_DELIMITER in raw_message
+
+
+def validate_fix_message_for_send(raw_message: str | None) -> str | None:
+    """Return a user-facing error when a sent FIX message does not use SOH delimiters."""
+    if raw_message is None or len(raw_message.strip()) <= 1:
+        return "FIX messages must use <SOH> as the field delimiter."
+
+    if _contains_pipe_delimiter(raw_message) or not _contains_fix_message_delimiter(
+        raw_message
+    ):
+        return "FIX messages must use <SOH> as the field delimiter."
+
+    return None
+
+
 def validate_fix_message_for_details_dialog(raw_message: str | None) -> str | None:
     """Return a user-facing error when a raw message is not safe for structured editing."""
     if raw_message is None:
@@ -65,12 +86,13 @@ def validate_fix_message_for_details_dialog(raw_message: str | None) -> str | No
     if len(normalized_message) <= 1:
         return "Structured editor requires a complete FIX message."
 
-    if _FIX_MESSAGE_DELIMITER not in raw_message:
-        if _DEFAULT_MESSAGE_DELIMITER in raw_message:
-            return (
-                "Structured editor requires FIX fields to be separated by "
-                "<SOH> characters."
-            )
+    if _contains_pipe_delimiter(raw_message):
+        return (
+            "Structured editor requires FIX fields to be separated by "
+            "<SOH> characters."
+        )
+
+    if not _contains_fix_message_delimiter(raw_message):
         return "Structured editor requires a complete FIX message."
 
     fields = [
@@ -327,8 +349,8 @@ class MessageDetailsDialog(QDialog):
         return self._table.rowCount()
 
     def _detect_delimiter(self, raw_message: str | None) -> str:
-        if raw_message and "\x01" in raw_message:
-            return "\x01"
+        if raw_message and _contains_fix_message_delimiter(raw_message):
+            return _FIX_MESSAGE_DELIMITER
         return _DEFAULT_MESSAGE_DELIMITER
 
     def _is_raw_message_rows(self, rows: list[MessageFieldRow]) -> bool:

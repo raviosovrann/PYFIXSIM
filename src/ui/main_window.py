@@ -212,15 +212,15 @@ class MainWindow(QMainWindow):
         session_menu.addSeparator()
         self._add_action(session_menu, "Exit", self._on_exit)
 
-        self._add_action(message_menu, "Create...", self._on_create_message)
-        self._add_action(message_menu, "Load...", self._on_load_message)
-        self._add_action(message_menu, "Save...", self._on_save_message)
-        self._add_action(message_menu, "Edit...", self._on_edit_message)
+        self._add_action(message_menu, "Create", self._on_create_message)
+        self._add_action(message_menu, "Load", self._on_load_message)
+        self._add_action(message_menu, "Save", self._on_save_message)
+        self._add_action(message_menu, "Edit", self._on_edit_message)
         message_menu.addSeparator()
         self._add_action(
             message_menu, "Send current message", self._on_send_current_message
         )
-        self._add_action(message_menu, "Send batch...", self._on_send_batch)
+        self._add_action(message_menu, "Send batch", self._on_send_batch)
 
         self._add_action(
             events_menu,

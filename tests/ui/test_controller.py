@@ -110,7 +110,7 @@ def test_app_controller_updates_selected_session_context_and_logs_service_events
     assert window.session_state_label.text() == "Session: CLIENT->SERVER"
 
     window.send_message_tab.set_message_text(
-        "8=FIX.4.2|35=0|49=CLIENT|56=SERVER|34=1|52=20260504-12:30:45.000|"
+        "8=FIX.4.2\x0135=0\x0149=CLIENT\x0156=SERVER\x0134=1\x0152=20260504-12:30:45.000\x01"
     )
     window.send_batch_requested.emit()
     qapp.processEvents()
@@ -630,5 +630,43 @@ def test_app_controller_rejects_structured_edit_for_pipe_delimited_message(
         window.statusBar().currentMessage()
         == "Structured editor requires FIX fields to be separated by <SOH> characters."
     )
+
+    window.close()
+
+
+def test_app_controller_rejects_sending_pipe_delimited_messages(
+    qapp: QApplication,
+    tmp_path: Path,
+) -> None:
+    service = FIXEngineService(session_factory=_FakeSession)
+    window = MainWindow(
+        engine_service=service,
+        config_path=_create_config_file(tmp_path),
+    )
+    window.show()
+    qapp.processEvents()
+
+    list_widget = window.findChild(QListWidget, "sessionList")
+    assert list_widget is not None
+
+    first_item = list_widget.item(0)
+    first_item.setSelected(True)
+    qapp.processEvents()
+
+    window.send_message_tab.set_message_text(
+        "8=FIX.4.2|35=0|49=CLIENT|56=SERVER|34=1|52=20260504-12:30:45.000|"
+    )
+    window.send_batch_requested.emit()
+    qapp.processEvents()
+
+    assert (
+        window.statusBar().currentMessage()
+        == "FIX messages must use <SOH> as the field delimiter."
+    )
+    assert (
+        "[console] FIX messages must use <SOH> as the field delimiter."
+        in window.events_viewer.toPlainText()
+    )
+    assert service.active_session is None
 
     window.close()

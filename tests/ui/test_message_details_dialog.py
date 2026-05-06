@@ -267,6 +267,15 @@ def test_validate_fix_message_for_details_dialog_rejects_pipe_delimited_message(
     )
 
 
+def test_validate_fix_message_for_details_dialog_rejects_mixed_delimiters() -> None:
+    assert (
+        validate_fix_message_for_details_dialog(
+            "8=FIX.4.2\x019=144|35=D\x0110=096\x01"
+        )
+        == "Structured editor requires FIX fields to be separated by <SOH> characters."
+    )
+
+
 def test_message_details_dialog_preserves_original_soh_delimiter_after_edit(
     qapp: QApplication,
 ) -> None:

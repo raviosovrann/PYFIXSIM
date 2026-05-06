@@ -135,6 +135,9 @@ def test_send_message_tab_buttons_and_editor_actions_emit_expected_signals(
     assert edit_action is not None
     assert insert_soh_action is not None
     assert word_wrap_action is not None
+    assert load_action.text() == "Load"
+    assert save_action.text() == "Save"
+    assert edit_action.text() == "Edit"
 
     load_action.trigger()
     save_action.trigger()
