@@ -22,6 +22,7 @@ from src.engine.session import FIXSessionError, SessionState
 from src.messages.order import MessageValidationError, NewOrderSingle
 from src.ui.message_details_dialog import (
     MessageDetailsDialog,
+    validate_fix_message_for_send,
     validate_fix_message_for_details_dialog,
 )
 
@@ -204,6 +205,13 @@ class AppController(QObject):
             self.status_message_changed.emit("No FIX messages are available to send")
             return
 
+        for message_block in message_blocks:
+            validation_error = validate_fix_message_for_send(message_block)
+            if validation_error is not None:
+                self.status_message_changed.emit(validation_error)
+                self.event_logged.emit(f"[console] {validation_error}")
+                return
+
         config = self._ensure_selected_session()
         if config is None:
             return
@@ -366,9 +374,7 @@ class AppController(QObject):
             Price=25.5,
         )
         fix_message = order.to_fix_message(config, MsgSeqNum=config.out_seq_num)
-        raw_message = self._render_message_for_editor(
-            bytes(fix_message.encode()).decode("utf-8", errors="replace")
-        )
+        raw_message = bytes(fix_message.encode()).decode("utf-8", errors="replace")
         self._window.send_message_tab.set_message_text(raw_message)
         self._window.send_message_tab.focus_editor()
         self.status_message_changed.emit(

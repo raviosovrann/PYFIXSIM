@@ -259,10 +259,10 @@ class SendMessageTab(QWidget):
         root.addLayout(footer_layout)
 
     def _create_editor_actions(self) -> None:
-        self._load_action = QAction("Load...", self)
+        self._load_action = QAction("Load", self)
         self._load_action.setObjectName("sendMessageLoadAction")
 
-        self._save_action = QAction("Save...", self)
+        self._save_action = QAction("Save", self)
         self._save_action.setObjectName("sendMessageSaveAction")
 
         self._edit_action = QAction("Edit", self)
