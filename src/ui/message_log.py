@@ -2,47 +2,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtGui import (
-    QBrush,
     QSyntaxHighlighter,
     QTextCharFormat,
     QTextDocument,
     QTextCursor,
 )
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QGroupBox,
-    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from src.ui.theme import get_event_role_colors
-
-if TYPE_CHECKING:
-    from src.messages.order import ExecutionReport
-
-
-_EXECUTION_REPORT_COLUMNS = [
-    "Timestamp",
-    "ClOrdID",
-    "Symbol",
-    "OrdStatus",
-    "CumQty",
-    "LeavesQty",
-    "AvgPx",
-    "Text",
-]
 
 
 @dataclass(slots=True)
@@ -102,40 +81,6 @@ class EventsViewer(QGroupBox):
         self._log_view.setObjectName("eventsViewerLog")
         self._log_view.setReadOnly(True)
         self._log_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-
-        self._execution_reports_label = QLabel("Parsed Execution Reports", self)
-        self._execution_reports_label.setObjectName("executionReportsLabel")
-
-        self._execution_report_table = QTableWidget(self)
-        self._execution_report_table.setObjectName("executionReportTable")
-        self._execution_report_table.setColumnCount(len(_EXECUTION_REPORT_COLUMNS))
-        self._execution_report_table.setHorizontalHeaderLabels(
-            _EXECUTION_REPORT_COLUMNS
-        )
-        self._execution_report_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers
-        )
-        self._execution_report_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self._execution_report_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-        self._execution_report_table.setAlternatingRowColors(True)
-        self._execution_report_table.verticalHeader().setVisible(False)
-        self._execution_report_table.horizontalHeader().setStretchLastSection(True)
-        self._execution_report_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.ResizeToContents
-        )
-        for section in range(1, len(_EXECUTION_REPORT_COLUMNS) - 1):
-            self._execution_report_table.horizontalHeader().setSectionResizeMode(
-                section,
-                QHeaderView.ResizeMode.ResizeToContents,
-            )
-        self._execution_report_table.horizontalHeader().setSectionResizeMode(
-            len(_EXECUTION_REPORT_COLUMNS) - 1,
-            QHeaderView.ResizeMode.Stretch,
-        )
 
         self._timestamp_checkbox = QCheckBox("Timestamp", self)
         self._timestamp_checkbox.setObjectName("eventsViewerTimestampCheckbox")
@@ -203,36 +148,7 @@ class EventsViewer(QGroupBox):
     def clear_events(self) -> None:
         """Remove all currently stored events from the viewer."""
         self._entries.clear()
-        self._execution_report_table.setRowCount(0)
         self._render_entries()
-
-    def append_execution_report(self, report: ExecutionReport) -> None:
-        """Append one parsed execution report to the structured lower table."""
-        row_index = self._execution_report_table.rowCount()
-        self._execution_report_table.insertRow(row_index)
-
-        values = [
-            report.TransactTime or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            report.ClOrdID,
-            report.Symbol,
-            report.OrdStatus,
-            str(report.CumQty),
-            str(report.LeavesQty),
-            str(report.AvgPx),
-            report.Text,
-        ]
-        for column_index, value in enumerate(values):
-            item = QTableWidgetItem(value)
-            item.setToolTip(value)
-            if column_index == 3:
-                item.setForeground(QBrush(get_event_role_colors()["incoming"]))
-            self._execution_report_table.setItem(row_index, column_index, item)
-
-        self._execution_report_table.resizeRowsToContents()
-
-    def execution_report_table(self) -> QTableWidget:
-        """Return the structured execution-report table widget."""
-        return self._execution_report_table
 
     def set_auto_scroll_enabled(self, enabled: bool) -> None:
         """Enable or disable automatic scroll-to-end on appended events."""
@@ -275,8 +191,6 @@ class EventsViewer(QGroupBox):
         filters_row.addWidget(self._filter_edit, 1)
 
         layout.addWidget(self._log_view, 1)
-        layout.addWidget(self._execution_reports_label)
-        layout.addWidget(self._execution_report_table, 1)
         layout.addLayout(filters_row)
 
     def _wire_signals(self) -> None:

@@ -9,6 +9,9 @@ from src.engine.service import EngineMessageEvent, FIXEngineService
 from src.messages.order import ExecutionReport, NewOrderSingle
 
 
+_WAIT_TIMEOUT = 1.0
+
+
 def test_local_fix_acceptor_supports_happy_path_order_flow() -> None:
     acceptor = LocalFIXAcceptor(port=0)
     acceptor.start()
@@ -45,14 +48,14 @@ def test_local_fix_acceptor_supports_happy_path_order_flow() -> None:
                 port=acceptor.bound_port,
             )
         )
-        deadline = time.monotonic() + 2.0
+        deadline = time.monotonic() + _WAIT_TIMEOUT
         while time.monotonic() < deadline:
             if any("35=A" in message for message in acceptor.sent_messages):
                 break
 
         acceptor.send_test_request("PING_1")
 
-        assert heartbeat_sent.wait(2.0) is True
+        assert heartbeat_sent.wait(_WAIT_TIMEOUT) is True
 
         service.send_new_order_single(
             NewOrderSingle(
@@ -65,12 +68,12 @@ def test_local_fix_acceptor_supports_happy_path_order_flow() -> None:
             )
         )
 
-        assert report_received.wait(2.0) is True
+        assert report_received.wait(_WAIT_TIMEOUT) is True
         service.close_session("integration done")
     finally:
         acceptor.stop()
 
-    deadline = time.monotonic() + 2.0
+    deadline = time.monotonic() + _WAIT_TIMEOUT
     while time.monotonic() < deadline:
         if any("35=0" in message and "112=PING_1" in message for message in acceptor.received_messages):
             break

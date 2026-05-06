@@ -18,7 +18,8 @@ _LOGON_MSG_TYPE = "A"
 _LOGOUT_MSG_TYPE = "5"
 _RESET_SEQ_NUM_VALUES = {"At logon", "Always"}
 _RECV_BUFFER_SIZE = 4096
-_DEFAULT_SOCKET_TIMEOUT = 0.5
+_DEFAULT_SOCKET_TIMEOUT = 0.1
+_THREAD_JOIN_TIMEOUT = 0.2
 
 InboundMessageHandler = Callable[[simplefix.FixMessage], None]
 
@@ -207,7 +208,7 @@ class FIXSession:
 
         if session_socket is None:
             if receive_thread is not None and receive_thread is not threading.current_thread():
-                receive_thread.join(timeout=1.0)
+                receive_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
             return
 
         try:
@@ -221,7 +222,7 @@ class FIXSession:
             logger.debug("Socket close ignored for FIX session", exc_info=True)
 
         if receive_thread is not None and receive_thread is not threading.current_thread():
-            receive_thread.join(timeout=1.0)
+            receive_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
 
     def close(self, reason: str | None = "Client requested shutdown") -> None:
         """Gracefully close the session, sending Logout before disconnecting."""

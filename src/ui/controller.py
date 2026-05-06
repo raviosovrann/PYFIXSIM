@@ -19,7 +19,7 @@ from src.engine.service import (
     FIXEngineServiceError,
 )
 from src.engine.session import FIXSessionError, SessionState
-from src.messages.order import ExecutionReport, MessageValidationError, NewOrderSingle
+from src.messages.order import MessageValidationError, NewOrderSingle
 from src.ui.message_details_dialog import (
     MessageDetailsDialog,
     validate_fix_message_for_send,
@@ -36,7 +36,6 @@ class EngineAdapter(QObject):
     state_changed = Signal(object)
     outbound_message = Signal(object)
     inbound_message = Signal(object)
-    execution_report_received = Signal(object)
     system_message = Signal(object)
     error_raised = Signal(object)
 
@@ -98,7 +97,6 @@ class AppController(QObject):
         self._engine_adapter.state_changed.connect(self._on_engine_state_changed)
         self._engine_adapter.outbound_message.connect(self._on_outbound_message)
         self._engine_adapter.inbound_message.connect(self._on_inbound_message)
-        self._engine_adapter.execution_report_received.connect(self._on_execution_report)
         self._engine_adapter.system_message.connect(self._on_system_message)
         self._engine_adapter.error_raised.connect(self._on_engine_error)
 
@@ -110,9 +108,6 @@ class AppController(QObject):
         )
         self._engine_service.register_inbound_message_handler(
             self._engine_adapter.inbound_message.emit
-        )
-        self._engine_service.register_execution_report_handler(
-            self._engine_adapter.execution_report_received.emit
         )
         self._engine_service.register_system_message_handler(
             self._engine_adapter.system_message.emit
@@ -603,20 +598,6 @@ class AppController(QObject):
         )
         self.event_logged.emit(
             f"[incoming] {event.session_id} | {event.message}{raw_message}"
-        )
-
-    @Slot(object)
-    def _on_execution_report(self, report_payload: object) -> None:
-        report = cast(ExecutionReport, report_payload)
-        self._window.events_viewer_panel.append_execution_report(report)
-        self.event_logged.emit(
-            "[incoming] Parsed ExecutionReport"
-            f" | ClOrdID={report.ClOrdID}"
-            f" | Symbol={report.Symbol}"
-            f" | OrdStatus={report.OrdStatus}"
-            f" | CumQty={report.CumQty}"
-            f" | LeavesQty={report.LeavesQty}"
-            f" | AvgPx={report.AvgPx}"
         )
 
     @Slot(object)

@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QListWidget,
     QPlainTextEdit,
-    QTableWidget,
 )
 import simplefix  # type: ignore[import-untyped]
 
@@ -19,6 +18,8 @@ from src.engine.local_acceptor import LocalFIXAcceptor
 from src.engine.service import FIXEngineService
 from src.engine.session import SessionConnectionError, SessionState
 from src.ui.main_window import MainWindow
+
+_WAIT_TIMEOUT = 1.0
 
 
 def _valid_fix_message(*, cl_ord_id: str, msg_type: str = "D") -> str:
@@ -511,9 +512,7 @@ def test_app_controller_logs_execution_report_from_real_acceptor(
     try:
         qapp.processEvents()
         list_widget = window.findChild(QListWidget, "sessionList")
-        execution_report_table = window.findChild(QTableWidget, "executionReportTable")
         assert list_widget is not None
-        assert execution_report_table is not None
 
         first_item = list_widget.item(0)
         first_item.setSelected(True)
@@ -523,23 +522,18 @@ def test_app_controller_logs_execution_report_from_real_acceptor(
         window.create_message_requested.emit()
         window.send_current_message_requested.emit()
 
-        deadline = time.monotonic() + 2.0
+        deadline = time.monotonic() + _WAIT_TIMEOUT
         while time.monotonic() < deadline:
             qapp.processEvents()
-            if execution_report_table.rowCount() > 0:
+            if "ExecutionReport" in window.events_viewer.toPlainText():
                 break
 
         assert "ExecutionReport" in window.events_viewer.toPlainText()
         assert "Connected to 127.0.0.1" in window.events_viewer.toPlainText()
         assert "Sent Logon" in window.events_viewer.toPlainText()
         assert "NewOrderSingle" in window.events_viewer.toPlainText()
-        assert execution_report_table.rowCount() >= 1
-        symbol_item = execution_report_table.item(0, 2)
-        status_item = execution_report_table.item(0, 3)
-        assert symbol_item is not None
-        assert symbol_item.text() == "AAPL"
-        assert status_item is not None
-        assert status_item.text() == "2"
+        assert "35=8" in window.events_viewer.toPlainText()
+        assert "55=AAPL" in window.events_viewer.toPlainText()
     finally:
         window.close()
         acceptor.stop()

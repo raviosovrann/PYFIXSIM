@@ -35,4 +35,3 @@ def _cleanup_qt_state(qapp: QApplication) -> Iterator[None]:
     qapp.closeAllWindows()
     QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qapp.processEvents()
-    gc.collect()

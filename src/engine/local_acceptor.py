@@ -16,7 +16,8 @@ _DEFAULT_HOST: Final[str] = "127.0.0.1"
 _DEFAULT_PORT: Final[int] = 9878
 _DEFAULT_FIX_VERSION: Final[str] = "FIX.4.2"
 _DEFAULT_HEARTBEAT_INTERVAL: Final[int] = 30
-_SOCKET_TIMEOUT: Final[float] = 0.5
+_SOCKET_TIMEOUT: Final[float] = 0.1
+_THREAD_JOIN_TIMEOUT: Final[float] = 0.2
 _RECV_BUFFER_SIZE: Final[int] = 4096
 
 
@@ -147,11 +148,11 @@ class LocalFIXAcceptor:
                 logger.debug("Ignoring client close failure", exc_info=True)
 
         if accept_thread is not None and accept_thread is not threading.current_thread():
-            accept_thread.join(timeout=1.0)
+            accept_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
 
         for thread in client_threads:
             if thread is not threading.current_thread():
-                thread.join(timeout=1.0)
+                thread.join(timeout=_THREAD_JOIN_TIMEOUT)
 
         with self._lock:
             self._client_sockets.clear()
@@ -278,8 +279,11 @@ class LocalFIXAcceptor:
 
     def _send(self, client_socket: socket.socket, message: simplefix.FixMessage) -> None:
         payload = message.encode()
-        client_socket.sendall(payload)
         self._record_message(self._sent_messages, message)
+        try:
+            client_socket.sendall(payload)
+        except OSError:
+            logger.debug("Local FIX acceptor send failed", exc_info=True)
 
     def _build_logon_response(self, inbound_message: simplefix.FixMessage) -> simplefix.FixMessage:
         response = self._build_admin_message("A", inbound_message)

@@ -196,9 +196,12 @@ def test_receive_loop_dispatches_inbound_messages_and_updates_sequence_number(
         lambda *args, **kwargs: fake_socket,
     )
     session = FIXSession(_build_session_config())
-    session.register_inbound_message_handler(
-        lambda message: (observed_messages.append(message), inbound_message_received.set())
-    )
+
+    def _on_inbound_message(message: simplefix.FixMessage) -> None:
+        observed_messages.append(message)
+        inbound_message_received.set()
+
+    session.register_inbound_message_handler(_on_inbound_message)
 
     session.connect()
 
