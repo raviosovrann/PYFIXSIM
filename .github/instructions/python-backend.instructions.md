@@ -147,7 +147,7 @@ appears to satisfy the written criteria.
 	- service forwards parsed execution reports to callbacks/events for the UI
 	- inbound execution-report path records an event/log entry
 	- tests cover at least one valid parse and one invalid input case
-- [ ] 6. Event capture / message log feed — backend → Events Viewer data
+- [x] 6. Event capture / message log feed — backend → Events Viewer data
 	- create a simple event record shape containing timestamp, direction,
 		session identity, and raw/system message text
 	- emit or return events for connect, logon, logout, disconnect, send, receive,
@@ -155,7 +155,7 @@ appears to satisfy the written criteria.
 	- log/message capture is sufficient for the UI Events Viewer happy path
 	- event generation is decoupled from widget code
 
-- [ ] 7. Local FIX acceptor — primary integration target
+- [x] 7. Local FIX acceptor — primary integration target
 	- implement a lightweight local simulated FIX acceptor for development and
 		happy-path integration testing
 	- accept a TCP connection and handle `Logon`, `Heartbeat`, `TestRequest`,
@@ -174,7 +174,7 @@ appears to satisfy the written criteria.
 		message exchange against the QuickFIX acceptor
 	- capture any QuickFIX-specific interoperability notes that affect session
 		configuration or message handling
-- [ ] 9. V1 backend test pass
+- [x] 9. V1 backend test pass
 	- tests cover config load/save, session lifecycle, close/logout, order send,
 		and execution-report parsing
 	- backend tests use mocks/fakes rather than flaky live-network dependencies

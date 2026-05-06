@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+import threading
 
 import pytest
 import simplefix  # type: ignore[import-untyped]
@@ -10,13 +11,27 @@ from src.engine.session import FIXSession, SessionState, SessionStateError
 
 
 class _FakeSocket:
-    def __init__(self) -> None:
+    def __init__(self, recv_payloads: list[bytes] | None = None) -> None:
         self.sent_payloads: list[bytes] = []
         self.shutdown_called = False
         self.close_called = False
+        self.timeout: float | None = None
+        self._recv_payloads = list(recv_payloads or [])
+        self._lock = threading.Lock()
 
     def sendall(self, payload: bytes) -> None:
         self.sent_payloads.append(payload)
+
+    def settimeout(self, timeout: float) -> None:
+        self.timeout = timeout
+
+    def recv(self, _buffer_size: int) -> bytes:
+        with self._lock:
+            if self.close_called:
+                return b""
+            if self._recv_payloads:
+                return self._recv_payloads.pop(0)
+        raise socket.timeout()
 
     def shutdown(self, how: int) -> None:
         assert how == socket.SHUT_RDWR
@@ -163,3 +178,33 @@ def test_send_requires_active_session_and_uses_reserved_sequence_number(
     assert session.out_seq_num == 3
     assert len(fake_socket.sent_payloads) == 2
     assert b"35=D" in fake_socket.sent_payloads[1]
+
+
+def test_receive_loop_dispatches_inbound_messages_and_updates_sequence_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inbound_message_received = threading.Event()
+    observed_messages: list[simplefix.FixMessage] = []
+    fake_socket = _FakeSocket(
+        recv_payloads=[
+            b"8=FIX.4.2\x019=52\x0135=0\x0134=2\x0149=SERVER\x0156=CLIENT\x0152=20260506-12:30:45.000\x0110=000\x01"
+        ]
+    )
+    monkeypatch.setattr(
+        socket,
+        "create_connection",
+        lambda *args, **kwargs: fake_socket,
+    )
+    session = FIXSession(_build_session_config())
+    session.register_inbound_message_handler(
+        lambda message: (observed_messages.append(message), inbound_message_received.set())
+    )
+
+    session.connect()
+
+    assert inbound_message_received.wait(1.0) is True
+    assert len(observed_messages) == 1
+    assert observed_messages[0].get(35) == b"0"
+    assert session.in_seq_num == 3
+
+    session.disconnect()

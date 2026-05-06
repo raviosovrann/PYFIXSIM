@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QFileDialog
@@ -28,6 +28,16 @@ from src.ui.message_details_dialog import (
 
 if TYPE_CHECKING:
     from src.ui.main_window import MainWindow
+
+
+class EngineAdapter(QObject):
+    """Bridge engine callbacks onto Qt signals so cross-thread updates stay queued."""
+
+    state_changed = Signal(object)
+    outbound_message = Signal(object)
+    inbound_message = Signal(object)
+    system_message = Signal(object)
+    error_raised = Signal(object)
 
 
 class AppController(QObject):
@@ -61,6 +71,7 @@ class AppController(QObject):
         super().__init__(window)
         self._window = window
         self._engine_service = engine_service or FIXEngineService()
+        self._engine_adapter = EngineAdapter(self)
         self._config_path = config_path
         self._known_session_configs: dict[str, SessionConfig] = {}
         self._selected_session_id: str | None = None
@@ -83,14 +94,25 @@ class AppController(QObject):
         )
 
     def _wire_engine_service(self) -> None:
+        self._engine_adapter.state_changed.connect(self._on_engine_state_changed)
+        self._engine_adapter.outbound_message.connect(self._on_outbound_message)
+        self._engine_adapter.inbound_message.connect(self._on_inbound_message)
+        self._engine_adapter.system_message.connect(self._on_system_message)
+        self._engine_adapter.error_raised.connect(self._on_engine_error)
+
         self._engine_service.register_state_change_handler(
-            self._on_engine_state_changed
+            self._engine_adapter.state_changed.emit
         )
         self._engine_service.register_outbound_message_handler(
-            self._on_outbound_message
+            self._engine_adapter.outbound_message.emit
         )
-        self._engine_service.register_inbound_message_handler(self._on_inbound_message)
-        self._engine_service.register_error_handler(self._on_engine_error)
+        self._engine_service.register_inbound_message_handler(
+            self._engine_adapter.inbound_message.emit
+        )
+        self._engine_service.register_system_message_handler(
+            self._engine_adapter.system_message.emit
+        )
+        self._engine_service.register_error_handler(self._engine_adapter.error_raised.emit)
 
     def _wire_ui_signals(self) -> None:
         self._window.session_list_widget.selection_changed.connect(
@@ -479,8 +501,9 @@ class AppController(QObject):
     def _on_keep_logs_toggled(self, checked: bool) -> None:
         self.keep_logs_preference_changed.emit(checked)
 
-    @Slot(SessionState)
-    def _on_engine_state_changed(self, state: SessionState) -> None:
+    @Slot(object)
+    def _on_engine_state_changed(self, state_payload: object) -> None:
+        state = cast(SessionState, state_payload)
         config = self._engine_service.active_config
         if config is None:
             return
@@ -501,8 +524,9 @@ class AppController(QObject):
         elif state is SessionState.DISCONNECTED:
             self.application_state_changed.emit("Application: Ready")
 
-    @Slot(EngineMessageEvent)
-    def _on_outbound_message(self, event: EngineMessageEvent) -> None:
+    @Slot(object)
+    def _on_outbound_message(self, event_payload: object) -> None:
+        event = cast(EngineMessageEvent, event_payload)
         raw_message = (
             f" | {self._render_message_for_editor(event.raw_message)}"
             if event.raw_message
@@ -512,8 +536,9 @@ class AppController(QObject):
             f"[outgoing] {event.session_id} | {event.message}{raw_message}"
         )
 
-    @Slot(EngineMessageEvent)
-    def _on_inbound_message(self, event: EngineMessageEvent) -> None:
+    @Slot(object)
+    def _on_inbound_message(self, event_payload: object) -> None:
+        event = cast(EngineMessageEvent, event_payload)
         raw_message = (
             f" | {self._render_message_for_editor(event.raw_message)}"
             if event.raw_message
@@ -523,7 +548,20 @@ class AppController(QObject):
             f"[incoming] {event.session_id} | {event.message}{raw_message}"
         )
 
-    @Slot(Exception)
-    def _on_engine_error(self, error: Exception) -> None:
+    @Slot(object)
+    def _on_system_message(self, event_payload: object) -> None:
+        event = cast(EngineMessageEvent, event_payload)
+        raw_message = (
+            f" | {self._render_message_for_editor(event.raw_message)}"
+            if event.raw_message
+            else ""
+        )
+        self.event_logged.emit(
+            f"[session] {event.session_id} | {event.message}{raw_message}"
+        )
+
+    @Slot(object)
+    def _on_engine_error(self, error_payload: object) -> None:
+        error = cast(Exception, error_payload)
         self.status_message_changed.emit(str(error))
         self.event_logged.emit(f"[console] {error}")
