@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import gc
 import os
 from collections.abc import Iterator
 
@@ -21,11 +19,6 @@ def qapp() -> Iterator[QApplication]:
 
     app.setQuitOnLastWindowClosed(False)
     yield app
-
-    app.closeAllWindows()
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    app.processEvents()
-    gc.collect()
 
 
 @pytest.fixture(autouse=True)

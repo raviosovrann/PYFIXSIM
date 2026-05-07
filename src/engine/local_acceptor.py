@@ -147,7 +147,10 @@ class LocalFIXAcceptor:
             except OSError:
                 logger.debug("Ignoring client close failure", exc_info=True)
 
-        if accept_thread is not None and accept_thread is not threading.current_thread():
+        if (
+            accept_thread is not None
+            and accept_thread is not threading.current_thread()
+        ):
             accept_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
 
         for thread in client_threads:
@@ -178,7 +181,9 @@ class LocalFIXAcceptor:
                 continue
             except OSError:
                 if not self._stop_event.is_set():
-                    logger.debug("Local FIX acceptor accept loop stopped", exc_info=True)
+                    logger.debug(
+                        "Local FIX acceptor accept loop stopped", exc_info=True
+                    )
                 return
 
             client_thread = threading.Thread(
@@ -225,7 +230,9 @@ class LocalFIXAcceptor:
         finally:
             with self._lock:
                 self._client_sockets = [
-                    existing for existing in self._client_sockets if existing is not client_socket
+                    existing
+                    for existing in self._client_sockets
+                    if existing is not client_socket
                 ]
                 self._client_sessions.pop(id(client_socket), None)
 
@@ -277,7 +284,9 @@ class LocalFIXAcceptor:
         logger.debug("Ignoring unsupported inbound MsgType=%s", msg_type)
         return False
 
-    def _send(self, client_socket: socket.socket, message: simplefix.FixMessage) -> None:
+    def _send(
+        self, client_socket: socket.socket, message: simplefix.FixMessage
+    ) -> None:
         payload = message.encode()
         self._record_message(self._sent_messages, message)
         try:
@@ -285,7 +294,9 @@ class LocalFIXAcceptor:
         except OSError:
             logger.debug("Local FIX acceptor send failed", exc_info=True)
 
-    def _build_logon_response(self, inbound_message: simplefix.FixMessage) -> simplefix.FixMessage:
+    def _build_logon_response(
+        self, inbound_message: simplefix.FixMessage
+    ) -> simplefix.FixMessage:
         response = self._build_admin_message("A", inbound_message)
         response.append_pair(98, "0")
         response.append_pair(
@@ -306,7 +317,9 @@ class LocalFIXAcceptor:
             response.append_pair(112, TestReqID)
         return response
 
-    def _build_logout_response(self, inbound_message: simplefix.FixMessage) -> simplefix.FixMessage:
+    def _build_logout_response(
+        self, inbound_message: simplefix.FixMessage
+    ) -> simplefix.FixMessage:
         response = self._build_admin_message("5", inbound_message)
         response.append_pair(58, "Local FIX acceptor closing session")
         return response
@@ -368,7 +381,9 @@ class LocalFIXAcceptor:
         inbound_message: simplefix.FixMessage,
     ) -> simplefix.FixMessage:
         message = simplefix.FixMessage()
-        message.append_pair(8, self._optional_tag(inbound_message, 8) or self._fix_version)
+        message.append_pair(
+            8, self._optional_tag(inbound_message, 8) or self._fix_version
+        )
         message.append_pair(35, msg_type)
         message.append_pair(49, self._required_tag(inbound_message, 56))
         message.append_pair(56, self._required_tag(inbound_message, 49))
@@ -428,7 +443,9 @@ class LocalFIXAcceptor:
     def _required_tag(message: simplefix.FixMessage, tag: int) -> str:
         raw_value = message.get(tag)
         if raw_value is None:
-            raise LocalFIXAcceptorError(f"Inbound FIX message is missing required tag {tag}")
+            raise LocalFIXAcceptorError(
+                f"Inbound FIX message is missing required tag {tag}"
+            )
         return bytes(raw_value).decode("utf-8", errors="replace")
 
     @staticmethod

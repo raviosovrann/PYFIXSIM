@@ -112,7 +112,9 @@ class AppController(QObject):
         self._engine_service.register_system_message_handler(
             self._engine_adapter.system_message.emit
         )
-        self._engine_service.register_error_handler(self._engine_adapter.error_raised.emit)
+        self._engine_service.register_error_handler(
+            self._engine_adapter.error_raised.emit
+        )
 
     def _wire_ui_signals(self) -> None:
         self._window.session_list_widget.selection_changed.connect(
@@ -150,6 +152,20 @@ class AppController(QObject):
         self._window.send_batch_requested.connect(self._on_send_batch_requested)
         self._window.auto_scroll_toggled.connect(self._on_auto_scroll_toggled)
         self._window.keep_logs_toggled.connect(self._on_keep_logs_toggled)
+
+    def shutdown(self) -> None:
+        """Close any active FIX session before the owning window is destroyed."""
+        active_session = self._engine_service.active_session
+        if active_session is None:
+            return
+
+        if active_session.state is SessionState.DISCONNECTED:
+            return
+
+        try:
+            self._engine_service.close_session("Main window closing")
+        except (FIXEngineServiceError, FIXSessionError) as exc:
+            self._on_engine_error(exc)
 
     def _bootstrap_sessions(self) -> None:
         try:

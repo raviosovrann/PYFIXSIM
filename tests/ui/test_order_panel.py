@@ -190,9 +190,7 @@ def test_send_message_tab_replaces_only_the_current_message_block(
     editor = tab.findChild(QPlainTextEdit, "sendMessageEditor")
     assert editor is not None
 
-    tab.set_message_text(
-        "8=FIX.4.4|35=D|11=ORDER_1|\n8=FIX.4.4|35=F|11=ORDER_2|"
-    )
+    tab.set_message_text("8=FIX.4.4|35=D|11=ORDER_1|\n8=FIX.4.4|35=F|11=ORDER_2|")
     cursor = editor.textCursor()
     cursor.movePosition(cursor.MoveOperation.Start)
     cursor.movePosition(cursor.MoveOperation.Down)

@@ -510,7 +510,11 @@ class FIXEngineService:
                 session = self._require_active_session()
                 TestReqID = self._decode_optional_tag(message, 112)
                 heartbeat = session.send_heartbeat(TestReqID or None)
-            except (FIXEngineServiceError, FIXSessionError, MessageValidationError) as exc:
+            except (
+                FIXEngineServiceError,
+                FIXSessionError,
+                MessageValidationError,
+            ) as exc:
                 self._emit_error(exc)
                 return
 

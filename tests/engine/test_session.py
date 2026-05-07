@@ -98,6 +98,8 @@ def test_logon_sends_fix_logon_message_and_activates_session(
     assert b"98=0" in fake_socket.sent_payloads[0]
     assert b"108=30" in fake_socket.sent_payloads[0]
 
+    session.disconnect()
+
 
 def test_logout_sends_fix_logout_message_and_sets_logging_out_state(
     monkeypatch: pytest.MonkeyPatch,
@@ -120,6 +122,8 @@ def test_logout_sends_fix_logout_message_and_sets_logging_out_state(
     assert b"35=5" in fake_socket.sent_payloads[1]
     assert b"34=2" in fake_socket.sent_payloads[1]
     assert b"58=bye" in fake_socket.sent_payloads[1]
+
+    session.disconnect()
 
 
 def test_close_sends_logout_before_disconnecting_active_session(
@@ -178,6 +182,8 @@ def test_send_requires_active_session_and_uses_reserved_sequence_number(
     assert session.out_seq_num == 3
     assert len(fake_socket.sent_payloads) == 2
     assert b"35=D" in fake_socket.sent_payloads[1]
+
+    session.disconnect()
 
 
 def test_receive_loop_dispatches_inbound_messages_and_updates_sequence_number(

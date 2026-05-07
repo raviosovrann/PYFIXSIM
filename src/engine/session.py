@@ -207,7 +207,10 @@ class FIXSession:
             self._transition_state_locked(SessionState.DISCONNECTED)
 
         if session_socket is None:
-            if receive_thread is not None and receive_thread is not threading.current_thread():
+            if (
+                receive_thread is not None
+                and receive_thread is not threading.current_thread()
+            ):
                 receive_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
             return
 
@@ -221,7 +224,10 @@ class FIXSession:
         except OSError:
             logger.debug("Socket close ignored for FIX session", exc_info=True)
 
-        if receive_thread is not None and receive_thread is not threading.current_thread():
+        if (
+            receive_thread is not None
+            and receive_thread is not threading.current_thread()
+        ):
             receive_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
 
     def close(self, reason: str | None = "Client requested shutdown") -> None:

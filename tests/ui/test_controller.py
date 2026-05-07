@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -10,6 +11,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QPlainTextEdit,
 )
+from PySide6.QtTest import QTest
 import simplefix  # type: ignore[import-untyped]
 
 import src.ui.controller as controller_module
@@ -19,7 +21,25 @@ from src.engine.service import FIXEngineService
 from src.engine.session import SessionConnectionError, SessionState
 from src.ui.main_window import MainWindow
 
-_WAIT_TIMEOUT = 1.0
+_WAIT_TIMEOUT = 5.0
+_POLL_INTERVAL_MS = 10
+
+
+def _wait_for_qt(
+    qapp: QApplication,
+    predicate: Callable[[], bool],
+    *,
+    timeout: float = _WAIT_TIMEOUT,
+) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        if predicate():
+            return True
+        QTest.qWait(_POLL_INTERVAL_MS)
+
+    qapp.processEvents()
+    return predicate()
 
 
 def _valid_fix_message(*, cl_ord_id: str, msg_type: str = "D") -> str:
@@ -522,11 +542,10 @@ def test_app_controller_logs_execution_report_from_real_acceptor(
         window.create_message_requested.emit()
         window.send_current_message_requested.emit()
 
-        deadline = time.monotonic() + _WAIT_TIMEOUT
-        while time.monotonic() < deadline:
-            qapp.processEvents()
-            if "ExecutionReport" in window.events_viewer.toPlainText():
-                break
+        assert _wait_for_qt(
+            qapp,
+            lambda: "ExecutionReport" in window.events_viewer.toPlainText(),
+        )
 
         assert "ExecutionReport" in window.events_viewer.toPlainText()
         assert "Connected to 127.0.0.1" in window.events_viewer.toPlainText()
