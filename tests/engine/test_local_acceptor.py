@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 
 from src.config.session_config import SessionConfig
 from src.engine.local_acceptor import LocalFIXAcceptor
@@ -10,6 +11,16 @@ from src.messages.order import ExecutionReport, NewOrderSingle
 
 
 _WAIT_TIMEOUT = 1.0
+_POLL_INTERVAL = 0.01
+
+
+def _wait_until(predicate: Callable[[], bool], timeout: float = _WAIT_TIMEOUT) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(_POLL_INTERVAL)
+    return predicate()
 
 
 def test_local_fix_acceptor_supports_happy_path_order_flow() -> None:
@@ -48,10 +59,9 @@ def test_local_fix_acceptor_supports_happy_path_order_flow() -> None:
                 port=acceptor.bound_port,
             )
         )
-        deadline = time.monotonic() + _WAIT_TIMEOUT
-        while time.monotonic() < deadline:
-            if any("35=A" in message for message in acceptor.sent_messages):
-                break
+        assert _wait_until(
+            lambda: any("35=A" in message for message in acceptor.sent_messages)
+        )
 
         acceptor.send_test_request("PING_1")
 
@@ -73,13 +83,12 @@ def test_local_fix_acceptor_supports_happy_path_order_flow() -> None:
     finally:
         acceptor.stop()
 
-    deadline = time.monotonic() + _WAIT_TIMEOUT
-    while time.monotonic() < deadline:
-        if any(
+    assert _wait_until(
+        lambda: any(
             "35=0" in message and "112=PING_1" in message
             for message in acceptor.received_messages
-        ):
-            break
+        )
+    )
 
     assert len(execution_reports) == 1
     assert execution_reports[0].ClOrdID == "ORDER_1"

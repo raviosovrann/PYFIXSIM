@@ -418,13 +418,6 @@ class FIXEngineService:
         with self._lock:
             return list(handlers)
 
-    def _copy_system_handlers(
-        self,
-        handlers: list[MessageHandler],
-    ) -> list[MessageHandler]:
-        with self._lock:
-            return list(handlers)
-
     def _copy_error_handlers(
         self,
         handlers: list[ErrorHandler],
@@ -503,7 +496,7 @@ class FIXEngineService:
 
         if msg_type == "1":
             try:
-                event = self.record_inbound_message(
+                self.record_inbound_message(
                     message,
                     description=self._describe_inbound_message(message),
                 )
@@ -523,7 +516,6 @@ class FIXEngineService:
                 "Sent Heartbeat",
                 raw_message=self._encode_fix_message(heartbeat),
             )
-            _ = event
             return
 
         try:
