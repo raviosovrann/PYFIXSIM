@@ -187,6 +187,7 @@ class CreateSessionDialog(QDialog):
 
         self._remote_host_edit = QLineEdit(required_group)
         self._remote_host_edit.setObjectName("remoteHostEdit")
+        self._remote_host_edit.setText("127.0.0.1")
         form.addRow("Remote host:", self._remote_host_edit)
 
         self._remote_port_spin = self._build_spin_box(required_group, 1, 65535, 9878)

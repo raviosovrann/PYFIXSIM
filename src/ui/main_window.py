@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -142,11 +142,19 @@ class MainWindow(QMainWindow):
 
     def set_status_message(self, message: str) -> None:
         """Show a transient message in the status bar."""
-        self.statusBar().showMessage(message, 5000)
+        self.statusBar().showMessage(message)
 
     def append_event(self, message: str) -> None:
         """Append a line to the events viewer."""
         self.events_viewer_panel.append_event(message)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Close any active controller-managed resources before the window exits."""
+        if self._create_session_dialog is not None:
+            self._create_session_dialog.close()
+
+        self.app_controller.shutdown()
+        super().closeEvent(event)
 
     def upsert_session_from_config(
         self,
@@ -463,6 +471,10 @@ class MainWindow(QMainWindow):
     def _seed_placeholder_content(self) -> None:
         self.events_viewer_panel.clear_events()
         self.append_event("[console] FIX Client Simulator is ready.")
+        self.append_event("[console] Local demo target defaults to 127.0.0.1:9878.")
+        self.append_event(
+            "[console] Start the local FIX acceptor from a terminal before connecting."
+        )
 
     def _ensure_create_session_dialog(self) -> CreateSessionDialog:
         dialog = self._create_session_dialog

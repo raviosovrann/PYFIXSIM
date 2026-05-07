@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from typing import Callable
 from typing import cast
 
 import pytest
@@ -24,6 +26,7 @@ class _FakeSession:
         self.close_reasons: list[str | None] = []
         self.sent_messages: list[simplefix.FixMessage] = []
         self._next_seq_num = config.out_seq_num
+        self._inbound_handlers: list[Callable[[simplefix.FixMessage], None]] = []
 
     @property
     def config(self) -> SessionConfig:
@@ -37,6 +40,7 @@ class _FakeSession:
         self.calls.append("logon")
         if self._fail_on_logon:
             raise SessionConnectionError("logon failed")
+        self._next_seq_num += 1
         self.state = SessionState.ACTIVE
 
     def close(self, reason: str | None = None) -> None:
@@ -49,9 +53,36 @@ class _FakeSession:
         self._next_seq_num += 1
         return MsgSeqNum
 
+    def register_inbound_message_handler(
+        self,
+        handler: Callable[[simplefix.FixMessage], None],
+    ) -> None:
+        self._inbound_handlers.append(handler)
+
     def send(self, message: simplefix.FixMessage) -> None:
         self.calls.append("send")
         self.sent_messages.append(message)
+
+    def send_heartbeat(self, TestReqID: str | None = None) -> simplefix.FixMessage:
+        self.calls.append("heartbeat")
+        heartbeat = simplefix.FixMessage()
+        heartbeat.append_pair(8, self._config.fix_version)
+        heartbeat.append_pair(35, "0")
+        heartbeat.append_pair(49, self._config.sender_comp_id)
+        heartbeat.append_pair(56, self._config.target_comp_id)
+        heartbeat.append_pair(34, str(self.next_out_seq_num()))
+        heartbeat.append_pair(
+            52,
+            datetime.now(timezone.utc).strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+        )
+        if TestReqID:
+            heartbeat.append_pair(112, TestReqID)
+        self.sent_messages.append(heartbeat)
+        return heartbeat
+
+    def emit_inbound_message(self, message: simplefix.FixMessage) -> None:
+        for handler in list(self._inbound_handlers):
+            handler(message)
 
 
 def _build_session_config() -> SessionConfig:
@@ -78,9 +109,11 @@ def test_create_session_stores_active_session_and_emits_initial_state() -> None:
 def test_open_session_accepts_mapping_and_emits_state_and_outbound_hooks() -> None:
     observed_states: list[SessionState] = []
     outbound_events: list[EngineMessageEvent] = []
+    system_events: list[EngineMessageEvent] = []
     service = FIXEngineService(session_factory=_FakeSession)
     service.register_state_change_handler(observed_states.append)
     service.register_outbound_message_handler(outbound_events.append)
+    service.register_system_message_handler(system_events.append)
 
     session = cast(
         _FakeSession,
@@ -98,14 +131,19 @@ def test_open_session_accepts_mapping_and_emits_state_and_outbound_hooks() -> No
     assert outbound_events[0].session_id == "CLIENT->SERVER"
     assert outbound_events[0].message == "Sent Logon"
     assert outbound_events[0].raw_message == "35=A"
+    assert len(system_events) == 1
+    assert system_events[0].direction is MessageDirection.SYSTEM
+    assert system_events[0].message == "Connected to 127.0.0.1:9876"
 
 
 def test_close_session_emits_logout_and_disconnected_state() -> None:
     observed_states: list[SessionState] = []
     outbound_events: list[EngineMessageEvent] = []
+    system_events: list[EngineMessageEvent] = []
     service = FIXEngineService(session_factory=_FakeSession)
     service.register_state_change_handler(observed_states.append)
     service.register_outbound_message_handler(outbound_events.append)
+    service.register_system_message_handler(system_events.append)
 
     session = cast(
         _FakeSession,
@@ -124,6 +162,8 @@ def test_close_session_emits_logout_and_disconnected_state() -> None:
     assert outbound_events[0].direction is MessageDirection.OUTBOUND
     assert outbound_events[0].message == "Sent Logout"
     assert outbound_events[0].raw_message == "35=5"
+    assert len(system_events) == 2
+    assert system_events[-1].message == "Disconnected from 127.0.0.1:9876"
 
 
 def test_record_inbound_message_emits_event_for_active_session() -> None:
@@ -255,7 +295,66 @@ def test_send_raw_message_sends_generic_fix_payload_and_emits_outbound_event() -
     assert session.calls == ["connect", "logon", "send"]
     assert len(session.sent_messages) == 1
     assert b"35=0" in bytes(session.sent_messages[0].encode())
+    assert b"49=CLIENT" in bytes(session.sent_messages[0].encode())
+    assert b"56=SERVER" in bytes(session.sent_messages[0].encode())
+    assert b"34=2" in bytes(session.sent_messages[0].encode())
     assert event.message == "Sent FIX message 35=0"
     assert event.raw_message is not None
     assert "35=0" in event.raw_message
     assert outbound_events[-1] == event
+
+
+def test_session_callback_routes_execution_reports_through_service_hooks() -> None:
+    inbound_events: list[EngineMessageEvent] = []
+    execution_reports: list[ExecutionReport] = []
+    service = FIXEngineService(session_factory=_FakeSession)
+    service.register_inbound_message_handler(inbound_events.append)
+    service.register_execution_report_handler(execution_reports.append)
+    session = cast(_FakeSession, service.open_session(_build_session_config()))
+
+    message = simplefix.FixMessage()
+    message.append_pair(8, "FIX.4.2")
+    message.append_pair(35, "8")
+    message.append_pair(37, "BROKER_ORDER_2")
+    message.append_pair(17, "EXEC_2")
+    message.append_pair(150, "2")
+    message.append_pair(39, "2")
+    message.append_pair(11, "ORDER_2")
+    message.append_pair(55, "MSFT")
+    message.append_pair(54, "1")
+    message.append_pair(38, "50")
+    message.append_pair(151, "0")
+    message.append_pair(14, "50")
+    message.append_pair(6, "10.5")
+
+    session.emit_inbound_message(message)
+
+    assert len(inbound_events) == 1
+    assert inbound_events[0].message == "ExecutionReport 11=ORDER_2"
+    assert len(execution_reports) == 1
+    assert execution_reports[0].ClOrdID == "ORDER_2"
+
+
+def test_session_callback_replies_to_test_request_with_heartbeat() -> None:
+    inbound_events: list[EngineMessageEvent] = []
+    outbound_events: list[EngineMessageEvent] = []
+    service = FIXEngineService(session_factory=_FakeSession)
+    service.register_inbound_message_handler(inbound_events.append)
+    service.register_outbound_message_handler(outbound_events.append)
+    session = cast(_FakeSession, service.open_session(_build_session_config()))
+
+    message = simplefix.FixMessage()
+    message.append_pair(8, "FIX.4.2")
+    message.append_pair(35, "1")
+    message.append_pair(49, "SERVER")
+    message.append_pair(56, "CLIENT")
+    message.append_pair(34, "7")
+    message.append_pair(52, "20260506-12:30:45.000")
+    message.append_pair(112, "PING_1")
+
+    session.emit_inbound_message(message)
+
+    assert inbound_events[-1].message == "Received TestRequest"
+    assert outbound_events[-1].message == "Sent Heartbeat"
+    assert session.calls[-1] == "heartbeat"
+    assert b"112=PING_1" in bytes(session.sent_messages[-1].encode())

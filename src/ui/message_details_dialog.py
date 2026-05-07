@@ -185,8 +185,7 @@ class MessageDetailsDialog(QDialog):
         )
 
         self._button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel,
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
         self._button_box.setObjectName("messageDetailsButtonBox")

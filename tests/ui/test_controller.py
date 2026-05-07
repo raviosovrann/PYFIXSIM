@@ -1,15 +1,45 @@
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtWidgets import QApplication, QDialog, QListWidget, QPlainTextEdit
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QListWidget,
+    QPlainTextEdit,
+)
+from PySide6.QtTest import QTest
+import simplefix  # type: ignore[import-untyped]
 
 import src.ui.controller as controller_module
 from src.config.session_config import SessionConfig, save_config
+from src.engine.local_acceptor import LocalFIXAcceptor
 from src.engine.service import FIXEngineService
 from src.engine.session import SessionConnectionError, SessionState
 from src.ui.main_window import MainWindow
+
+_WAIT_TIMEOUT = 5.0
+_POLL_INTERVAL_MS = 10
+
+
+def _wait_for_qt(
+    qapp: QApplication,
+    predicate: Callable[[], bool],
+    *,
+    timeout: float = _WAIT_TIMEOUT,
+) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        if predicate():
+            return True
+        QTest.qWait(_POLL_INTERVAL_MS)
+
+    qapp.processEvents()
+    return predicate()
 
 
 def _valid_fix_message(*, cl_ord_id: str, msg_type: str = "D") -> str:
@@ -36,6 +66,7 @@ class _FakeSession:
         self.close_reasons: list[str | None] = []
         self.sent_messages: list[object] = []
         self._next_seq_num = config.out_seq_num
+        self._inbound_handlers: list[object] = []
 
     @property
     def config(self) -> SessionConfig:
@@ -49,6 +80,7 @@ class _FakeSession:
         self.calls.append("logon")
         if self._fail_on_logon:
             raise SessionConnectionError("logon failed")
+        self._next_seq_num += 1
         self.state = SessionState.ACTIVE
 
     def close(self, reason: str | None = None) -> None:
@@ -63,9 +95,26 @@ class _FakeSession:
         self._next_seq_num += 1
         return msg_seq_num
 
+    def register_inbound_message_handler(self, handler: object) -> None:
+        self._inbound_handlers.append(handler)
+
     def send(self, message: object) -> None:
         self.calls.append("send")
         self.sent_messages.append(message)
+
+    def send_heartbeat(self, TestReqID: str | None = None) -> simplefix.FixMessage:
+        self.calls.append("heartbeat")
+        heartbeat = simplefix.FixMessage()
+        heartbeat.append_pair(8, self._config.fix_version)
+        heartbeat.append_pair(35, "0")
+        heartbeat.append_pair(49, self._config.sender_comp_id)
+        heartbeat.append_pair(56, self._config.target_comp_id)
+        heartbeat.append_pair(34, str(self.next_out_seq_num()))
+        heartbeat.append_pair(52, "20260506-12:30:45.000")
+        if TestReqID:
+            heartbeat.append_pair(112, TestReqID)
+        self.sent_messages.append(heartbeat)
+        return heartbeat
 
 
 def _create_config_file(
@@ -426,6 +475,87 @@ def test_app_controller_creates_soh_delimited_fix_message(
     )
 
     window.close()
+
+
+def test_app_controller_routes_created_orders_through_typed_send_path(
+    qapp: QApplication,
+    tmp_path: Path,
+) -> None:
+    service = FIXEngineService(session_factory=_FakeSession)
+    window = MainWindow(
+        engine_service=service,
+        config_path=_create_config_file(tmp_path),
+    )
+    window.show()
+    qapp.processEvents()
+
+    list_widget = window.findChild(QListWidget, "sessionList")
+    assert list_widget is not None
+
+    first_item = list_widget.item(0)
+    first_item.setSelected(True)
+    qapp.processEvents()
+
+    window.create_message_requested.emit()
+    window.send_current_message_requested.emit()
+    qapp.processEvents()
+
+    event_text = window.events_viewer.toPlainText()
+    assert "NewOrderSingle 11=ORDER_" in event_text
+    assert "Sent FIX message 35=D" not in event_text
+
+    session = cast(_FakeSession, service.active_session)
+    assert session is not None
+    assert any(
+        b"35=D" in bytes(cast(simplefix.FixMessage, message).encode())
+        for message in session.sent_messages
+    )
+
+    window.close()
+
+
+def test_app_controller_logs_execution_report_from_real_acceptor(
+    qapp: QApplication,
+    tmp_path: Path,
+) -> None:
+    acceptor = LocalFIXAcceptor(port=0)
+    acceptor.start()
+    window = MainWindow(
+        config_path=_create_config_file(
+            tmp_path,
+            host="127.0.0.1",
+            port=acceptor.bound_port,
+        )
+    )
+    window.show()
+
+    try:
+        qapp.processEvents()
+        list_widget = window.findChild(QListWidget, "sessionList")
+        assert list_widget is not None
+
+        first_item = list_widget.item(0)
+        first_item.setSelected(True)
+        qapp.processEvents()
+
+        window.start_session_requested.emit()
+        window.create_message_requested.emit()
+        window.send_current_message_requested.emit()
+
+        assert _wait_for_qt(
+            qapp,
+            lambda: "ExecutionReport" in window.events_viewer.toPlainText(),
+        )
+
+        assert "ExecutionReport" in window.events_viewer.toPlainText()
+        assert "Connected to 127.0.0.1" in window.events_viewer.toPlainText()
+        assert "Sent Logon" in window.events_viewer.toPlainText()
+        assert "NewOrderSingle" in window.events_viewer.toPlainText()
+        assert "35=8" in window.events_viewer.toPlainText()
+        assert "55=AAPL" in window.events_viewer.toPlainText()
+    finally:
+        window.close()
+        acceptor.stop()
 
 
 def test_app_controller_edits_nearest_message_when_cursor_is_on_trailing_blank_line(

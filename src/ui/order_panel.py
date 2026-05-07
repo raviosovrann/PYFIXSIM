@@ -188,9 +188,12 @@ class SendMessageTab(QWidget):
         if current_block_number is None:
             return None
 
-        current_text = self._message_editor.document().findBlockByNumber(
-            current_block_number
-        ).text().strip()
+        current_text = (
+            self._message_editor.document()
+            .findBlockByNumber(current_block_number)
+            .text()
+            .strip()
+        )
         if not current_text:
             return None
         return current_text
