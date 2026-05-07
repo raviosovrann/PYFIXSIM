@@ -257,11 +257,11 @@ def test_replay_tab_exposes_required_controls(qapp: QApplication) -> None:
     assert use_timestamps.isChecked() is True
     assert preview.isReadOnly() is True
 
-    tab.set_log_file_path("/tmp/replay.log")
+    tab.set_log_file_path("logs/replay.log")
     tab.set_preview_text("8=FIX.4.4|35=D|11=ORDER_1|")
     qapp.processEvents()
 
-    assert tab.log_file_path() == "/tmp/replay.log"
+    assert tab.log_file_path() == "logs/replay.log"
     assert tab.preview_text() == "8=FIX.4.4|35=D|11=ORDER_1|"
 
     tab.close()
@@ -309,7 +309,7 @@ def test_replay_tab_buttons_and_filters_emit_expected_signals(
     assert message_type_edit is not None
     assert use_timestamps is not None
 
-    QTest.keyClicks(log_file_edit, "/tmp/test.log")
+    QTest.keyClicks(log_file_edit, "logs/test.log")
     QTest.keyClicks(message_type_edit, "35=8")
     QTest.mouseClick(use_timestamps, Qt.MouseButton.LeftButton)
     qapp.processEvents()
