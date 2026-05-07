@@ -36,12 +36,25 @@ class _FakeSession:
         self.calls.append("connect")
         self.state = SessionState.CONNECTED
 
-    def logon(self) -> None:
+    def logon(self) -> simplefix.FixMessage:
         self.calls.append("logon")
         if self._fail_on_logon:
             raise SessionConnectionError("logon failed")
+        logon = simplefix.FixMessage()
+        logon.append_pair(8, self._config.fix_version)
+        logon.append_pair(35, "A")
+        logon.append_pair(49, self._config.sender_comp_id)
+        logon.append_pair(56, self._config.target_comp_id)
+        logon.append_pair(34, str(self._next_seq_num))
+        logon.append_pair(
+            52,
+            datetime.now(timezone.utc).strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+        )
+        logon.append_pair(98, "0")
+        logon.append_pair(108, str(self._config.heartbeat_interval))
         self._next_seq_num += 1
         self.state = SessionState.ACTIVE
+        return logon
 
     def close(self, reason: str | None = None) -> None:
         self.calls.append("close")
@@ -130,7 +143,10 @@ def test_open_session_accepts_mapping_and_emits_state_and_outbound_hooks() -> No
     assert outbound_events[0].direction is MessageDirection.OUTBOUND
     assert outbound_events[0].session_id == "CLIENT->SERVER"
     assert outbound_events[0].message == "Sent Logon"
-    assert outbound_events[0].raw_message == "35=A"
+    assert outbound_events[0].raw_message is not None
+    assert "35=A" in outbound_events[0].raw_message
+    assert "49=CLIENT" in outbound_events[0].raw_message
+    assert "56=SERVER" in outbound_events[0].raw_message
     assert len(system_events) == 1
     assert system_events[0].direction is MessageDirection.SYSTEM
     assert system_events[0].message == "Connected to 127.0.0.1:9876"

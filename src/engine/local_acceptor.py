@@ -53,6 +53,7 @@ class LocalFIXAcceptor:
         self._stop_event = threading.Event()
         self._listener: socket.socket | None = None
         self._accept_thread: threading.Thread | None = None
+        self._heartbeat_thread: threading.Thread | None = None
         self._client_threads: list[threading.Thread] = []
         self._client_sockets: list[socket.socket] = []
         self._client_sessions: dict[int, _ClientSessionIdentity] = {}
@@ -104,15 +105,22 @@ class LocalFIXAcceptor:
             name="local-fix-acceptor",
             daemon=True,
         )
+        heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop,
+            name="local-fix-acceptor-heartbeat",
+            daemon=True,
+        )
         with self._lock:
             self._listener = listener
             self._bound_port = int(listener.getsockname()[1])
             self._stop_event.clear()
             self._accept_thread = accept_thread
+            self._heartbeat_thread = heartbeat_thread
             self._out_seq_num = 1
             self._exec_id = 1
 
         accept_thread.start()
+        heartbeat_thread.start()
         logger.info(
             "Local FIX acceptor listening on %s:%s",
             self._host,
@@ -124,10 +132,12 @@ class LocalFIXAcceptor:
         with self._lock:
             listener = self._listener
             accept_thread = self._accept_thread
+            heartbeat_thread = self._heartbeat_thread
             client_sockets = list(self._client_sockets)
             client_threads = list(self._client_threads)
             self._listener = None
             self._accept_thread = None
+            self._heartbeat_thread = None
 
         self._stop_event.set()
 
@@ -152,6 +162,12 @@ class LocalFIXAcceptor:
             and accept_thread is not threading.current_thread()
         ):
             accept_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
+
+        if (
+            heartbeat_thread is not None
+            and heartbeat_thread is not threading.current_thread()
+        ):
+            heartbeat_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
 
         for thread in client_threads:
             if thread is not threading.current_thread():
@@ -196,6 +212,18 @@ class LocalFIXAcceptor:
                 self._client_sockets.append(client_socket)
                 self._client_threads.append(client_thread)
             client_thread.start()
+
+    def _heartbeat_loop(self) -> None:
+        while not self._stop_event.wait(self._heartbeat_interval):
+            with self._lock:
+                client_sockets = list(self._client_sockets)
+
+            for client_socket in client_sockets:
+                try:
+                    heartbeat = self._build_proactive_admin_message(client_socket, "0")
+                except LocalFIXAcceptorError:
+                    continue
+                self._send(client_socket, heartbeat)
 
     def _handle_client(self, client_socket: socket.socket) -> None:
         parser = simplefix.FixParser()

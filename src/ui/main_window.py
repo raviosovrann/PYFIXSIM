@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
-    QCheckBox,
     QLabel,
     QMainWindow,
     QMessageBox,

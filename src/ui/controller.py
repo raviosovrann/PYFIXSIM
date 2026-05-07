@@ -21,7 +21,6 @@ from src.engine.service import (
 from src.engine.session import FIXSessionError, SessionState
 from src.messages.order import MessageValidationError, NewOrderSingle
 from src.ui.message_details_dialog import (
-    MessageDetailsDialog,
     validate_fix_message_for_send,
     validate_fix_message_for_details_dialog,
 )
@@ -248,8 +247,15 @@ class AppController(QObject):
             self._on_engine_error(exc)
             return None
 
-    def _render_message_for_editor(self, raw_message: str) -> str:
-        return raw_message.replace("\x01", "|")
+    def _format_engine_event(self, category: str, event: EngineMessageEvent) -> str:
+        header_line = f"[{category}] {event.session_id} | {event.message}"
+        if not event.raw_message:
+            return header_line
+
+        return (
+            f"{header_line}\n"
+            f"[{category}] {event.session_id} | Original Message: {event.raw_message}"
+        )
 
     def _parse_fix_fields(self, raw_message: str) -> dict[str, str]:
         fields: dict[str, str] = {}
@@ -688,38 +694,17 @@ class AppController(QObject):
     @Slot(object)
     def _on_outbound_message(self, event_payload: object) -> None:
         event = cast(EngineMessageEvent, event_payload)
-        raw_message = (
-            f" | {self._render_message_for_editor(event.raw_message)}"
-            if event.raw_message
-            else ""
-        )
-        self.event_logged.emit(
-            f"[outgoing] {event.session_id} | {event.message}{raw_message}"
-        )
+        self.event_logged.emit(self._format_engine_event("outgoing", event))
 
     @Slot(object)
     def _on_inbound_message(self, event_payload: object) -> None:
         event = cast(EngineMessageEvent, event_payload)
-        raw_message = (
-            f" | {self._render_message_for_editor(event.raw_message)}"
-            if event.raw_message
-            else ""
-        )
-        self.event_logged.emit(
-            f"[incoming] {event.session_id} | {event.message}{raw_message}"
-        )
+        self.event_logged.emit(self._format_engine_event("incoming", event))
 
     @Slot(object)
     def _on_system_message(self, event_payload: object) -> None:
         event = cast(EngineMessageEvent, event_payload)
-        raw_message = (
-            f" | {self._render_message_for_editor(event.raw_message)}"
-            if event.raw_message
-            else ""
-        )
-        self.event_logged.emit(
-            f"[session] {event.session_id} | {event.message}{raw_message}"
-        )
+        self.event_logged.emit(self._format_engine_event("session", event))
 
     @Slot(object)
     def _on_engine_error(self, error_payload: object) -> None:
