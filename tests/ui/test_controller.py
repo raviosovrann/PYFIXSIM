@@ -348,6 +348,46 @@ def test_app_controller_reports_save_message_write_errors(
     window.close()
 
 
+def test_app_controller_limits_replay_preview_to_reasonable_size(
+    qapp: QApplication,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    window = MainWindow(config_path=_create_config_file(tmp_path))
+    window.show()
+    qapp.processEvents()
+
+    replay_path = tmp_path / "replay.log"
+    replay_content = (
+        "8=FIX.4.4\x0135=D\x0111=ORDER_42\x0155=AAPL\x0110=123\x01\n"
+        * 3000
+    )
+    replay_path.write_text(replay_content, encoding="utf-8")
+
+    monkeypatch.setattr(
+        controller_module.QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: (str(replay_path), "Log files (*.log *.txt *.fix)"),
+    )
+
+    window.replay_browse_requested.emit()
+    qapp.processEvents()
+
+    preview_text = window.replay_tab.preview_text()
+
+    assert window.replay_tab.log_file_path() == str(replay_path)
+    assert preview_text.startswith("8=FIX.4.4\x0135=D\x0111=ORDER_42")
+    assert preview_text != replay_content
+    assert (
+        "[Preview truncated to the first "
+        f"{controller_module._REPLAY_PREVIEW_CHARACTER_LIMIT:,} characters.]"
+        in preview_text
+    )
+    assert window.statusBar().currentMessage() == "Replay log selected: replay.log"
+
+    window.close()
+
+
 def test_app_controller_reports_session_switch_close_errors(
     qapp: QApplication,
     tmp_path: Path,

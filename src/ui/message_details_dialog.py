@@ -19,29 +19,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-logger = logging.getLogger(__name__)
+from src.ui.fix_message_metadata import (
+    DEFAULT_MESSAGE_DELIMITER,
+    FIX_MESSAGE_DELIMITER,
+    TAG_NAMES,
+    TRAILER_TAGS,
+    contains_fix_message_delimiter,
+    contains_pipe_delimiter,
+)
 
-_TAG_NAMES: dict[str, str] = {
-    "8": "BeginString",
-    "9": "BodyLength",
-    "10": "CheckSum",
-    "11": "ClOrdID",
-    "34": "MsgSeqNum",
-    "35": "MsgType",
-    "38": "OrderQty",
-    "40": "OrdType",
-    "44": "Price",
-    "49": "SenderCompID",
-    "52": "SendingTime",
-    "54": "Side",
-    "55": "Symbol",
-    "56": "TargetCompID",
-    "58": "Text",
-    "60": "TransactTime",
-}
-_DEFAULT_MESSAGE_DELIMITER = "|"
-_FIX_MESSAGE_DELIMITER = "\x01"
-_TRAILER_TAGS = frozenset({"10"})
+logger = logging.getLogger(__name__)
 _REQUIRED_EDIT_TAGS: tuple[str, ...] = (
     "8",
     "9",
@@ -57,11 +44,11 @@ _REQUIRED_EDIT_TAGS_TEXT = ", ".join(_REQUIRED_EDIT_TAGS[:-1]) + ", and 10"
 
 
 def _contains_fix_message_delimiter(raw_message: str) -> bool:
-    return _FIX_MESSAGE_DELIMITER in raw_message
+    return contains_fix_message_delimiter(raw_message)
 
 
 def _contains_pipe_delimiter(raw_message: str) -> bool:
-    return _DEFAULT_MESSAGE_DELIMITER in raw_message
+    return contains_pipe_delimiter(raw_message)
 
 
 def validate_fix_message_for_send(raw_message: str | None) -> str | None:
@@ -97,7 +84,7 @@ def validate_fix_message_for_details_dialog(raw_message: str | None) -> str | No
 
     fields = [
         field.strip()
-        for field in raw_message.split(_FIX_MESSAGE_DELIMITER)
+        for field in raw_message.split(FIX_MESSAGE_DELIMITER)
         if field.strip()
     ]
     if not fields:
@@ -148,7 +135,7 @@ class MessageDetailsDialog(QDialog):
         self.setMinimumSize(520, 320)
         self._is_updating_table = False
         self._has_loaded_message = False
-        self._message_delimiter = _DEFAULT_MESSAGE_DELIMITER
+        self._message_delimiter = DEFAULT_MESSAGE_DELIMITER
         self._source_label = "Message Details"
 
         self._summary_label = QLabel(self)
@@ -343,14 +330,14 @@ class MessageDetailsDialog(QDialog):
             tag_item = self._table.item(row_index, 0)
             if tag_item is None:
                 continue
-            if tag_item.text().strip() in _TRAILER_TAGS:
+            if tag_item.text().strip() in TRAILER_TAGS:
                 return row_index
         return self._table.rowCount()
 
     def _detect_delimiter(self, raw_message: str | None) -> str:
         if raw_message and _contains_fix_message_delimiter(raw_message):
-            return _FIX_MESSAGE_DELIMITER
-        return _DEFAULT_MESSAGE_DELIMITER
+            return FIX_MESSAGE_DELIMITER
+        return DEFAULT_MESSAGE_DELIMITER
 
     def _is_raw_message_rows(self, rows: list[MessageFieldRow]) -> bool:
         return len(rows) == 1 and rows[0].tag == ""
@@ -369,7 +356,7 @@ class MessageDetailsDialog(QDialog):
         if not normalized_tag:
             return "Enter a FIX tag number"
 
-        tag_name = _TAG_NAMES.get(normalized_tag)
+        tag_name = TAG_NAMES.get(normalized_tag)
         if tag_name is None:
             return normalized_tag
         return f"{normalized_tag} — {tag_name}"

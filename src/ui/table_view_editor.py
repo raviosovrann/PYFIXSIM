@@ -20,31 +20,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.ui.fix_message_metadata import (
+    DEFAULT_MESSAGE_DELIMITER,
+    FIX_MESSAGE_DELIMITER,
+    TAG_NAMES,
+    TRAILER_TAGS,
+)
 from src.ui.message_details_dialog import validate_fix_message_for_details_dialog
-
-_TAG_NAMES: dict[str, str] = {
-    "8": "BeginString",
-    "9": "BodyLength",
-    "10": "CheckSum",
-    "11": "ClOrdID",
-    "21": "HandlInst",
-    "34": "MsgSeqNum",
-    "35": "MsgType",
-    "38": "OrderQty",
-    "40": "OrdType",
-    "44": "Price",
-    "49": "SenderCompID",
-    "52": "SendingTime",
-    "54": "Side",
-    "55": "Symbol",
-    "56": "TargetCompID",
-    "58": "Text",
-    "59": "TimeInForce",
-    "60": "TransactTime",
-}
-_DEFAULT_MESSAGE_DELIMITER = "|"
-_FIX_MESSAGE_DELIMITER = "\x01"
-_TRAILER_TAGS = frozenset({"10"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +46,7 @@ class TableViewEditor(QDialog):
         self.setObjectName("tableViewEditorDialog")
         self.resize(860, 520)
         self.setMinimumSize(620, 360)
-        self._message_delimiter = _DEFAULT_MESSAGE_DELIMITER
+        self._message_delimiter = DEFAULT_MESSAGE_DELIMITER
         self._source_label = "Table View Editor"
         self._has_loaded_message = False
         self._is_updating_table = False
@@ -77,7 +59,7 @@ class TableViewEditor(QDialog):
         self._tag_combo.setObjectName("tableViewEditorTagCombo")
         self._tag_combo.setEditable(True)
         self._tag_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        for tag, name in sorted(_TAG_NAMES.items(), key=lambda item: int(item[0])):
+        for tag, name in sorted(TAG_NAMES.items(), key=lambda item: int(item[0])):
             self._tag_combo.addItem(f"{tag} — {name}", userData=tag)
 
         self._value_edit = QLineEdit(self)
@@ -244,7 +226,7 @@ class TableViewEditor(QDialog):
     def _default_insert_row(self) -> int:
         for row_index in range(self._table.rowCount()):
             tag_item = self._table.item(row_index, 0)
-            if tag_item is not None and tag_item.text().strip() in _TRAILER_TAGS:
+            if tag_item is not None and tag_item.text().strip() in TRAILER_TAGS:
                 return row_index
         return self._table.rowCount()
 
@@ -275,17 +257,19 @@ class TableViewEditor(QDialog):
         return ""
 
     def _detect_delimiter(self, raw_message: str | None) -> str:
-        if raw_message and _FIX_MESSAGE_DELIMITER in raw_message:
-            return _FIX_MESSAGE_DELIMITER
-        return _DEFAULT_MESSAGE_DELIMITER
+        if raw_message and FIX_MESSAGE_DELIMITER in raw_message:
+            return FIX_MESSAGE_DELIMITER
+        return DEFAULT_MESSAGE_DELIMITER
 
     def _tag_name(self, tag: str) -> str:
-        return _TAG_NAMES.get(tag.strip(), "Custom") if tag.strip() else ""
+        return TAG_NAMES.get(tag.strip(), "Custom") if tag.strip() else ""
 
     def _update_summary_label(self) -> None:
         if self._has_loaded_message:
+            editable_field_count = self._serializable_field_count()
             self._summary_label.setText(
-                f"{self._source_label} — displaying {self._serializable_field_count()} editable field(s)"
+                f"{self._source_label} — displaying "
+                f"{editable_field_count} editable field(s)"
             )
             return
 

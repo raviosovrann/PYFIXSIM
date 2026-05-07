@@ -30,6 +30,9 @@ if TYPE_CHECKING:
     from src.ui.main_window import MainWindow
 
 
+_REPLAY_PREVIEW_CHARACTER_LIMIT = 65_536
+
+
 class EngineAdapter(QObject):
     """Bridge engine callbacks onto Qt signals so cross-thread updates stay queued."""
 
@@ -272,6 +275,20 @@ class AppController(QObject):
             fields[normalized_tag] = value.strip()
 
         return fields
+
+    def _load_replay_preview(self, replay_path: Path) -> str:
+        with replay_path.open("r", encoding="utf-8") as replay_file:
+            preview_text = replay_file.read(_REPLAY_PREVIEW_CHARACTER_LIMIT + 1)
+
+        if len(preview_text) <= _REPLAY_PREVIEW_CHARACTER_LIMIT:
+            return preview_text
+
+        truncated_preview = preview_text[:_REPLAY_PREVIEW_CHARACTER_LIMIT].rstrip()
+        return (
+            f"{truncated_preview}\n\n"
+            "[Preview truncated to the first "
+            f"{_REPLAY_PREVIEW_CHARACTER_LIMIT:,} characters.]"
+        )
 
     def _new_order_single_from_message_block(
         self,
@@ -576,7 +593,7 @@ class AppController(QObject):
 
         replay_path = Path(file_path)
         try:
-            preview_text = replay_path.read_text(encoding="utf-8")
+            preview_text = self._load_replay_preview(replay_path)
         except (OSError, UnicodeDecodeError) as exc:
             self._on_engine_error(exc)
             return
