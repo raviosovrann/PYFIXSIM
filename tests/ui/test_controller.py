@@ -416,7 +416,7 @@ def test_app_controller_opens_structured_editor_and_updates_current_message(
         table = dialog.table_widget()
         for row in range(table.rowCount()):
             tag_item = table.item(row, 0)
-            value_item = table.item(row, 1)
+            value_item = table.item(row, 2)
             if tag_item is None or value_item is None:
                 continue
             if tag_item.text() == "11":
@@ -425,7 +425,7 @@ def test_app_controller_opens_structured_editor_and_updates_current_message(
         return int(QDialog.DialogCode.Accepted)
 
     monkeypatch.setattr(
-        controller_module.MessageDetailsDialog,
+        controller_module.TableViewEditor,
         "exec",
         _accept_with_changes,
     )
@@ -584,7 +584,7 @@ def test_app_controller_edits_nearest_message_when_cursor_is_on_trailing_blank_l
         table = dialog.table_widget()
         for row in range(table.rowCount()):
             tag_item = table.item(row, 0)
-            value_item = table.item(row, 1)
+            value_item = table.item(row, 2)
             if tag_item is None or value_item is None:
                 continue
             if tag_item.text() == "11":
@@ -593,7 +593,7 @@ def test_app_controller_edits_nearest_message_when_cursor_is_on_trailing_blank_l
         return int(QDialog.DialogCode.Accepted)
 
     monkeypatch.setattr(
-        controller_module.MessageDetailsDialog,
+        controller_module.TableViewEditor,
         "exec",
         _accept_with_changes,
     )
@@ -631,7 +631,7 @@ def test_app_controller_rejects_structured_edit_for_single_character_input(
         return int(QDialog.DialogCode.Accepted)
 
     monkeypatch.setattr(
-        controller_module.MessageDetailsDialog,
+        controller_module.TableViewEditor,
         "exec",
         _record_dialog_open,
     )
@@ -670,7 +670,7 @@ def test_app_controller_rejects_structured_edit_for_malformed_fix_fields(
         return int(QDialog.DialogCode.Accepted)
 
     monkeypatch.setattr(
-        controller_module.MessageDetailsDialog,
+        controller_module.TableViewEditor,
         "exec",
         _record_dialog_open,
     )
@@ -705,7 +705,7 @@ def test_app_controller_rejects_structured_edit_when_required_tags_are_missing(
         return int(QDialog.DialogCode.Accepted)
 
     monkeypatch.setattr(
-        controller_module.MessageDetailsDialog,
+        controller_module.TableViewEditor,
         "exec",
         _record_dialog_open,
     )
@@ -747,7 +747,7 @@ def test_app_controller_rejects_structured_edit_for_pipe_delimited_message(
         return int(QDialog.DialogCode.Accepted)
 
     monkeypatch.setattr(
-        controller_module.MessageDetailsDialog,
+        controller_module.TableViewEditor,
         "exec",
         _record_dialog_open,
     )

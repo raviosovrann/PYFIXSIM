@@ -6,12 +6,14 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QCheckBox,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QSpinBox,
 )
 
-from src.ui.order_panel import SendMessageTab
+from src.ui.order_panel import ReplayTab, SendMessageTab
 
 
 def test_send_message_tab_exposes_manual_send_controls(qapp: QApplication) -> None:
@@ -225,5 +227,95 @@ def test_send_message_tab_replaces_nearest_message_when_cursor_is_on_trailing_bl
     qapp.processEvents()
 
     assert tab.message_text() == "8=FIX.4.4|35=D|11=ORDER_99|\n"
+
+    tab.close()
+
+
+def test_replay_tab_exposes_required_controls(qapp: QApplication) -> None:
+    tab = ReplayTab()
+    tab.show()
+    qapp.processEvents()
+
+    log_file_edit = tab.findChild(QLineEdit, "replayLogFileEdit")
+    browse_button = tab.findChild(QPushButton, "replayBrowseButton")
+    from_spin = tab.findChild(QSpinBox, "replayFromSpin")
+    to_spin = tab.findChild(QSpinBox, "replayToSpin")
+    message_type_edit = tab.findChild(QLineEdit, "replayMessageTypeEdit")
+    use_timestamps = tab.findChild(QCheckBox, "replayUseTimestampsCheckbox")
+    preview = tab.findChild(QPlainTextEdit, "replayPreviewEditor")
+
+    assert log_file_edit is not None
+    assert browse_button is not None
+    assert from_spin is not None
+    assert to_spin is not None
+    assert message_type_edit is not None
+    assert use_timestamps is not None
+    assert preview is not None
+    assert browse_button.text() == "..."
+    assert from_spin.value() == 0
+    assert to_spin.value() == 0
+    assert use_timestamps.isChecked() is True
+    assert preview.isReadOnly() is True
+
+    tab.set_log_file_path("/tmp/replay.log")
+    tab.set_preview_text("8=FIX.4.4|35=D|11=ORDER_1|")
+    qapp.processEvents()
+
+    assert tab.log_file_path() == "/tmp/replay.log"
+    assert tab.preview_text() == "8=FIX.4.4|35=D|11=ORDER_1|"
+
+    tab.close()
+
+
+def test_replay_tab_buttons_and_filters_emit_expected_signals(
+    qapp: QApplication,
+) -> None:
+    tab = ReplayTab()
+    tab.show()
+    qapp.processEvents()
+
+    browse_calls: list[bool] = []
+    play_calls: list[bool] = []
+    pause_calls: list[bool] = []
+    stop_calls: list[bool] = []
+    next_calls: list[bool] = []
+    filters_changed_calls: list[bool] = []
+
+    tab.browse_requested.connect(lambda: browse_calls.append(True))
+    tab.play_requested.connect(lambda: play_calls.append(True))
+    tab.pause_requested.connect(lambda: pause_calls.append(True))
+    tab.stop_requested.connect(lambda: stop_calls.append(True))
+    tab.next_requested.connect(lambda: next_calls.append(True))
+    tab.filters_changed.connect(lambda: filters_changed_calls.append(True))
+
+    for object_name, expected_calls in (
+        ("replayBrowseButton", browse_calls),
+        ("replayPlayButton", play_calls),
+        ("replayPauseButton", pause_calls),
+        ("replayStopButton", stop_calls),
+        ("replayNextButton", next_calls),
+    ):
+        button = tab.findChild(QPushButton, object_name)
+        assert button is not None
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+        qapp.processEvents()
+        assert expected_calls == [True]
+
+    log_file_edit = tab.findChild(QLineEdit, "replayLogFileEdit")
+    message_type_edit = tab.findChild(QLineEdit, "replayMessageTypeEdit")
+    use_timestamps = tab.findChild(QCheckBox, "replayUseTimestampsCheckbox")
+
+    assert log_file_edit is not None
+    assert message_type_edit is not None
+    assert use_timestamps is not None
+
+    QTest.keyClicks(log_file_edit, "/tmp/test.log")
+    QTest.keyClicks(message_type_edit, "35=8")
+    QTest.mouseClick(use_timestamps, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+
+    assert tab.message_type_filter() == "35=8"
+    assert tab.use_timestamps() is False
+    assert filters_changed_calls != []
 
     tab.close()

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QMenu,
+    QPushButton,
 )
 
 from src.config.session_config import SessionConfig, save_config
@@ -77,6 +78,14 @@ def test_main_window_widget_interactions(qapp: QApplication, tmp_path: Path) -> 
         for index in range(window.workspace_tabs.count())
     ]
     assert tab_titles == ["Send Message", "Replay", "Test Scenarios"]
+
+    replay_browse_button = window.findChild(QPushButton, "replayBrowseButton")
+    create_test_scenario_button = window.findChild(
+        QPushButton,
+        "createTestScenarioButton",
+    )
+    assert replay_browse_button is not None
+    assert create_test_scenario_button is not None
 
     assert window.application_state_label.text() == "Application: Ready"
     assert window.session_state_label.text() == "Session: No session selected"
