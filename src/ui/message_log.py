@@ -8,7 +8,6 @@ from PySide6.QtGui import (
     QSyntaxHighlighter,
     QTextCharFormat,
     QTextDocument,
-    QTextCursor,
 )
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -242,11 +241,13 @@ class EventsViewer(QGroupBox):
             else:
                 visible_lines.append(entry.raw_text)
 
+        horizontal_scroll_value = self._log_view.horizontalScrollBar().value()
         self._log_view.setPlainText("\n".join(visible_lines))
         if self._auto_scroll_enabled:
-            cursor = self._log_view.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-            self._log_view.setTextCursor(cursor)
+            self._log_view.verticalScrollBar().setValue(
+                self._log_view.verticalScrollBar().maximum()
+            )
+            self._log_view.horizontalScrollBar().setValue(horizontal_scroll_value)
 
     def _classify_category(self, message: str) -> str:
         lower_message = message.lower()

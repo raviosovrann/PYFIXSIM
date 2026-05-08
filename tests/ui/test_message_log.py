@@ -77,3 +77,30 @@ def test_events_viewer_timestamp_toggle_changes_rendered_lines(
     assert widget.toPlainText() == "[console] Test line"
 
     widget.close()
+
+
+def test_events_viewer_auto_scroll_keeps_horizontal_position_on_long_lines(
+    qapp: QApplication,
+) -> None:
+    widget = EventsViewer()
+    widget.resize(480, 240)
+    widget.show()
+    qapp.processEvents()
+
+    long_line = "[outgoing] Original Message: " + ("8=FIX.4.2\x01" * 80)
+    widget.append_event(long_line)
+    qapp.processEvents()
+
+    horizontal_scroll_bar = widget.log_view().horizontalScrollBar()
+    vertical_scroll_bar = widget.log_view().verticalScrollBar()
+
+    horizontal_scroll_bar.setValue(horizontal_scroll_bar.minimum())
+    qapp.processEvents()
+
+    widget.append_event(long_line)
+    qapp.processEvents()
+
+    assert horizontal_scroll_bar.value() == horizontal_scroll_bar.minimum()
+    assert vertical_scroll_bar.value() == vertical_scroll_bar.maximum()
+
+    widget.close()

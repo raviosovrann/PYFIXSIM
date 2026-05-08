@@ -122,4 +122,43 @@ def test_local_fix_acceptor_supports_happy_path_order_flow() -> None:
     assert any("35=5" in message for message in acceptor.received_messages)
     assert any("35=5" in message for message in acceptor.sent_messages)
     assert any("35=8" in message for message in acceptor.sent_messages)
+
+
+def test_local_fix_acceptor_and_service_exchange_periodic_heartbeats() -> None:
+    acceptor = LocalFIXAcceptor(port=0, heartbeat_interval=1)
+    acceptor.start()
+
+    inbound_events: list[EngineMessageEvent] = []
+    outbound_events: list[EngineMessageEvent] = []
+    service = FIXEngineService()
+    service.register_inbound_message_handler(inbound_events.append)
+    service.register_outbound_message_handler(outbound_events.append)
+
+    try:
+        service.open_session(
+            SessionConfig(
+                sender_comp_id="CLIENT",
+                target_comp_id="SERVER",
+                host="127.0.0.1",
+                port=acceptor.bound_port,
+                heartbeat_interval=1,
+            )
+        )
+
+        assert _wait_until(
+            lambda: any(event.message == "Sent Heartbeat" for event in outbound_events),
+            timeout=2.5,
+        )
+        assert _wait_until(
+            lambda: any(
+                event.message == "Received Heartbeat" for event in inbound_events
+            ),
+            timeout=2.5,
+        )
+    finally:
+        service.close_session("heartbeat integration done")
+        acceptor.stop()
+
+    assert any("35=0" in message for message in acceptor.received_messages)
+    assert any("35=0" in message for message in acceptor.sent_messages)
     

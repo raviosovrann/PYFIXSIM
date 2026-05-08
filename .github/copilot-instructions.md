@@ -41,8 +41,11 @@ mypy src/
 black --check src/ tests/
 bandit -r src/
 
-# Run the application
+# Run the application UI
 python src/main.py
+
+# Run Local Acceptor for testing
+python -m src.engine.local_acceptor --host 127.0.0.1 --port 9878
 ```
 
 ## Key Conventions

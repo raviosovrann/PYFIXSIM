@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from PySide6.QtCore import QPoint, Qt, Signal, Slot
 from PySide6.QtGui import QAction, QTextCursor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
@@ -264,20 +265,25 @@ class SendMessageTab(QWidget):
     def _create_editor_actions(self) -> None:
         self._load_action = QAction("Load", self)
         self._load_action.setObjectName("sendMessageLoadAction")
+        self._load_action.setShortcut("Ctrl+L")
 
         self._save_action = QAction("Save", self)
         self._save_action.setObjectName("sendMessageSaveAction")
+        self._save_action.setShortcut("Ctrl+S")
 
         self._edit_action = QAction("Edit", self)
         self._edit_action.setObjectName("sendMessageEditAction")
+        self._edit_action.setShortcut("F4")
 
         self._insert_soh_action = QAction("Insert <SOH>", self)
         self._insert_soh_action.setObjectName("sendMessageInsertSohAction")
+        self._insert_soh_action.setShortcut("Ctrl+Alt+I")
 
         self._word_wrap_action = QAction("Word Wrap", self)
         self._word_wrap_action.setObjectName("sendMessageWordWrapAction")
         self._word_wrap_action.setCheckable(True)
         self._word_wrap_action.setChecked(False)
+        self._word_wrap_action.setShortcut("Ctrl+W")
 
     def _wire_signals(self) -> None:
         self._send_all_button.clicked.connect(self.send_all_requested)
@@ -353,3 +359,177 @@ class SendMessageTab(QWidget):
             self._message_editor.find(search_text)
 
         self.search_text_changed.emit(search_text)
+
+
+class ReplayTab(QWidget):
+    """Replay workspace for sending messages from an existing FIX log file."""
+
+    browse_requested = Signal()  # emitted when the replay log browse button is clicked
+    play_requested = Signal()  # emitted when replay playback should start
+    pause_requested = Signal()  # emitted when replay playback should pause
+    stop_requested = Signal()  # emitted when replay playback should stop
+    next_requested = Signal()  # emitted when the next replay message is requested
+    filters_changed = Signal()  # emitted when replay filters or playback options change
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        self._log_file_edit = QLineEdit(self)
+        self._log_file_edit.setObjectName("replayLogFileEdit")
+        self._log_file_edit.setPlaceholderText("Select replay log file")
+
+        self._browse_button = QPushButton("...", self)
+        self._browse_button.setObjectName("replayBrowseButton")
+
+        self._from_spin = QSpinBox(self)
+        self._from_spin.setObjectName("replayFromSpin")
+        self._from_spin.setRange(0, 999999)
+
+        self._to_spin = QSpinBox(self)
+        self._to_spin.setObjectName("replayToSpin")
+        self._to_spin.setRange(0, 999999)
+
+        self._message_type_edit = QLineEdit(self)
+        self._message_type_edit.setObjectName("replayMessageTypeEdit")
+        self._message_type_edit.setPlaceholderText("35=D 35=8")
+
+        self._rate_spin = QDoubleSpinBox(self)
+        self._rate_spin.setObjectName("replayRateSpin")
+        self._rate_spin.setDecimals(4)
+        self._rate_spin.setRange(0.0, 99999.0)
+
+        self._send_count_spin = QSpinBox(self)
+        self._send_count_spin.setObjectName("replaySendCountSpin")
+        self._send_count_spin.setRange(1, 9999)
+        self._send_count_spin.setValue(1)
+
+        self._use_timestamps_checkbox = QCheckBox("Use timestamps", self)
+        self._use_timestamps_checkbox.setObjectName("replayUseTimestampsCheckbox")
+        self._use_timestamps_checkbox.setChecked(True)
+
+        self._speed_spin = QDoubleSpinBox(self)
+        self._speed_spin.setObjectName("replaySpeedSpin")
+        self._speed_spin.setDecimals(2)
+        self._speed_spin.setRange(0.10, 100.0)
+        self._speed_spin.setSingleStep(0.10)
+        self._speed_spin.setValue(1.0)
+
+        self._preview_editor = QPlainTextEdit(self)
+        self._preview_editor.setObjectName("replayPreviewEditor")
+        self._preview_editor.setReadOnly(True)
+        self._preview_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self._preview_editor.setPlaceholderText(
+            "Replay preview will appear here after selecting a log file."
+        )
+
+        self._play_button = QPushButton("Play", self)
+        self._play_button.setObjectName("replayPlayButton")
+        self._pause_button = QPushButton("Pause", self)
+        self._pause_button.setObjectName("replayPauseButton")
+        self._stop_button = QPushButton("Stop", self)
+        self._stop_button.setObjectName("replayStopButton")
+        self._next_button = QPushButton("Next", self)
+        self._next_button.setObjectName("replayNextButton")
+
+        self._build_ui()
+        self._wire_signals()
+
+    def log_file_path(self) -> str:
+        """Return the current replay log path text."""
+        return self._log_file_edit.text().strip()
+
+    def set_log_file_path(self, path: str) -> None:
+        """Update the replay log path shown in the tab."""
+        self._log_file_edit.setText(path)
+
+    def sequence_range(self) -> tuple[int, int]:
+        """Return the configured replay sequence-number filter range."""
+        return self._from_spin.value(), self._to_spin.value()
+
+    def message_type_filter(self) -> str:
+        """Return the replay message-type filter text."""
+        return self._message_type_edit.text().strip()
+
+    def rate_value(self) -> float:
+        """Return the configured replay rate in messages per second."""
+        return self._rate_spin.value()
+
+    def send_count(self) -> int:
+        """Return the configured replay send count."""
+        return self._send_count_spin.value()
+
+    def use_timestamps(self) -> bool:
+        """Return whether replay timing should follow message timestamps."""
+        return self._use_timestamps_checkbox.isChecked()
+
+    def speed_multiplier(self) -> float:
+        """Return the replay speed multiplier value."""
+        return self._speed_spin.value()
+
+    def preview_text(self) -> str:
+        """Return the replay preview text currently displayed."""
+        return self._preview_editor.toPlainText()
+
+    def set_preview_text(self, text: str) -> None:
+        """Populate the replay preview panel with loaded log content or stub text."""
+        self._preview_editor.setPlainText(text)
+
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
+
+        file_row = QHBoxLayout()
+        file_row.setSpacing(8)
+        file_row.addWidget(QLabel("Log file:", self))
+        file_row.addWidget(self._log_file_edit, 1)
+        file_row.addWidget(self._browse_button)
+
+        filters_row = QHBoxLayout()
+        filters_row.setSpacing(8)
+        filters_row.addWidget(QLabel("From:", self))
+        filters_row.addWidget(self._from_spin)
+        filters_row.addWidget(QLabel("To:", self))
+        filters_row.addWidget(self._to_spin)
+        filters_row.addWidget(QLabel("Message type:", self))
+        filters_row.addWidget(self._message_type_edit, 1)
+        filters_row.addWidget(QLabel("Rate (msg/sec):", self))
+        filters_row.addWidget(self._rate_spin)
+        filters_row.addWidget(QLabel("Send count:", self))
+        filters_row.addWidget(self._send_count_spin)
+
+        actions_row = QHBoxLayout()
+        actions_row.setSpacing(8)
+        actions_row.addWidget(self._use_timestamps_checkbox)
+        actions_row.addStretch(1)
+        actions_row.addWidget(QLabel("Speed:", self))
+        actions_row.addWidget(self._speed_spin)
+        actions_row.addWidget(self._play_button)
+        actions_row.addWidget(self._pause_button)
+        actions_row.addWidget(self._stop_button)
+        actions_row.addWidget(self._next_button)
+
+        root.addLayout(file_row)
+        root.addLayout(filters_row)
+        root.addWidget(self._preview_editor, 1)
+        root.addLayout(actions_row)
+
+    def _wire_signals(self) -> None:
+        self._browse_button.clicked.connect(self.browse_requested)
+        self._play_button.clicked.connect(self.play_requested)
+        self._pause_button.clicked.connect(self.pause_requested)
+        self._stop_button.clicked.connect(self.stop_requested)
+        self._next_button.clicked.connect(self.next_requested)
+
+        self._log_file_edit.textChanged.connect(self._emit_filters_changed)
+        self._from_spin.valueChanged.connect(self._emit_filters_changed)
+        self._to_spin.valueChanged.connect(self._emit_filters_changed)
+        self._message_type_edit.textChanged.connect(self._emit_filters_changed)
+        self._rate_spin.valueChanged.connect(self._emit_filters_changed)
+        self._send_count_spin.valueChanged.connect(self._emit_filters_changed)
+        self._use_timestamps_checkbox.toggled.connect(self._emit_filters_changed)
+        self._speed_spin.valueChanged.connect(self._emit_filters_changed)
+
+    @Slot(object)
+    def _emit_filters_changed(self, *_args: object) -> None:
+        self.filters_changed.emit()

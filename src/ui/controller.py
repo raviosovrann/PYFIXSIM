@@ -21,13 +21,16 @@ from src.engine.service import (
 from src.engine.session import FIXSessionError, SessionState
 from src.messages.order import MessageValidationError, NewOrderSingle
 from src.ui.message_details_dialog import (
-    MessageDetailsDialog,
     validate_fix_message_for_send,
     validate_fix_message_for_details_dialog,
 )
+from src.ui.table_view_editor import TableViewEditor
 
 if TYPE_CHECKING:
     from src.ui.main_window import MainWindow
+
+
+_REPLAY_PREVIEW_CHARACTER_LIMIT = 65_536
 
 
 class EngineAdapter(QObject):
@@ -152,6 +155,18 @@ class AppController(QObject):
         self._window.send_batch_requested.connect(self._on_send_batch_requested)
         self._window.auto_scroll_toggled.connect(self._on_auto_scroll_toggled)
         self._window.keep_logs_toggled.connect(self._on_keep_logs_toggled)
+        self._window.replay_browse_requested.connect(self._on_replay_browse_requested)
+        self._window.replay_play_requested.connect(self._on_replay_play_requested)
+        self._window.replay_pause_requested.connect(self._on_replay_pause_requested)
+        self._window.replay_stop_requested.connect(self._on_replay_stop_requested)
+        self._window.replay_next_requested.connect(self._on_replay_next_requested)
+        self._window.replay_filters_changed.connect(self._on_replay_filters_changed)
+        self._window.create_test_scenario_requested.connect(
+            self._on_create_test_scenario_requested
+        )
+        self._window.run_test_scenario_requested.connect(
+            self._on_run_test_scenario_requested
+        )
 
     def shutdown(self) -> None:
         """Close any active FIX session before the owning window is destroyed."""
@@ -235,8 +250,15 @@ class AppController(QObject):
             self._on_engine_error(exc)
             return None
 
-    def _render_message_for_editor(self, raw_message: str) -> str:
-        return raw_message.replace("\x01", "|")
+    def _format_engine_event(self, category: str, event: EngineMessageEvent) -> str:
+        header_line = f"[{category}] {event.session_id} | {event.message}"
+        if not event.raw_message:
+            return header_line
+
+        return (
+            f"{header_line}\n"
+            f"[{category}] {event.session_id} | Original Message: {event.raw_message}"
+        )
 
     def _parse_fix_fields(self, raw_message: str) -> dict[str, str]:
         fields: dict[str, str] = {}
@@ -253,6 +275,20 @@ class AppController(QObject):
             fields[normalized_tag] = value.strip()
 
         return fields
+
+    def _load_replay_preview(self, replay_path: Path) -> str:
+        with replay_path.open("r", encoding="utf-8") as replay_file:
+            preview_text = replay_file.read(_REPLAY_PREVIEW_CHARACTER_LIMIT + 1)
+
+        if len(preview_text) <= _REPLAY_PREVIEW_CHARACTER_LIMIT:
+            return preview_text
+
+        truncated_preview = preview_text[:_REPLAY_PREVIEW_CHARACTER_LIMIT].rstrip()
+        return (
+            f"{truncated_preview}\n\n"
+            "[Preview truncated to the first "
+            f"{_REPLAY_PREVIEW_CHARACTER_LIMIT:,} characters.]"
+        )
 
     def _new_order_single_from_message_block(
         self,
@@ -531,7 +567,7 @@ class AppController(QObject):
             self.status_message_changed.emit(validation_error)
             return
 
-        dialog = MessageDetailsDialog(self._window)
+        dialog = TableViewEditor(self._window)
         dialog.set_message_text(
             current_block,
             source_label="Current FIX message",
@@ -543,6 +579,86 @@ class AppController(QObject):
         self._window.send_message_tab.replace_current_message_block(updated_message)
         self._window.send_message_tab.focus_editor()
         self.status_message_changed.emit("Updated FIX message from structured editor")
+
+    @Slot()
+    def _on_replay_browse_requested(self) -> None:
+        file_path, _selected_filter = QFileDialog.getOpenFileName(
+            self._window,
+            "Select replay log",
+            "",
+            "Log files (*.log *.txt *.fix);;All files (*)",
+        )
+        if not file_path:
+            return
+
+        replay_path = Path(file_path)
+        try:
+            preview_text = self._load_replay_preview(replay_path)
+        except (OSError, UnicodeDecodeError) as exc:
+            self._on_engine_error(exc)
+            return
+
+        self._window.replay_tab.set_log_file_path(str(replay_path))
+        self._window.replay_tab.set_preview_text(preview_text)
+        self.status_message_changed.emit(
+            f"Replay log selected: {replay_path.name}"
+        )
+        self.event_logged.emit(
+            f"[console] Replay log selected: {replay_path.name}"
+        )
+
+    @Slot()
+    def _on_replay_play_requested(self) -> None:
+        replay_path = self._window.replay_tab.log_file_path()
+        if not replay_path:
+            self.status_message_changed.emit("Select a replay log before playing")
+            return
+
+        self.event_logged.emit(
+            "[console] Replay started: "
+            f"{Path(replay_path).name} | rate={self._window.replay_tab.rate_value():g} "
+            f"count={self._window.replay_tab.send_count()} "
+            f"speed={self._window.replay_tab.speed_multiplier():g}"
+        )
+
+    @Slot()
+    def _on_replay_pause_requested(self) -> None:
+        self.event_logged.emit("[console] Replay paused")
+
+    @Slot()
+    def _on_replay_stop_requested(self) -> None:
+        self.event_logged.emit("[console] Replay stopped")
+
+    @Slot()
+    def _on_replay_next_requested(self) -> None:
+        self.event_logged.emit("[console] Replay advanced to the next message")
+
+    @Slot()
+    def _on_replay_filters_changed(self) -> None:
+        replay_path = self._window.replay_tab.log_file_path()
+        details = (
+            f"path={Path(replay_path).name} " if replay_path else "path=<none> "
+        )
+        details += (
+            f"range={self._window.replay_tab.sequence_range()[0]}-"
+            f"{self._window.replay_tab.sequence_range()[1]} "
+            f"type={self._window.replay_tab.message_type_filter() or '*'} "
+            f"timestamps={'on' if self._window.replay_tab.use_timestamps() else 'off'}"
+        )
+        self.status_message_changed.emit(f"Replay filters updated: {details}")
+
+    @Slot()
+    def _on_create_test_scenario_requested(self) -> None:
+        self.event_logged.emit(
+            "[console] Test Scenario designer is not implemented yet; "
+            "use the placeholder list to stage future flows."
+        )
+
+    @Slot(str)
+    def _on_run_test_scenario_requested(self, scenario_name: str) -> None:
+        self.event_logged.emit(
+            f"[console] Test Scenario run requested: {scenario_name}"
+        )
 
     @Slot()
     def _on_send_current_message_requested(self) -> None:
@@ -595,38 +711,17 @@ class AppController(QObject):
     @Slot(object)
     def _on_outbound_message(self, event_payload: object) -> None:
         event = cast(EngineMessageEvent, event_payload)
-        raw_message = (
-            f" | {self._render_message_for_editor(event.raw_message)}"
-            if event.raw_message
-            else ""
-        )
-        self.event_logged.emit(
-            f"[outgoing] {event.session_id} | {event.message}{raw_message}"
-        )
+        self.event_logged.emit(self._format_engine_event("outgoing", event))
 
     @Slot(object)
     def _on_inbound_message(self, event_payload: object) -> None:
         event = cast(EngineMessageEvent, event_payload)
-        raw_message = (
-            f" | {self._render_message_for_editor(event.raw_message)}"
-            if event.raw_message
-            else ""
-        )
-        self.event_logged.emit(
-            f"[incoming] {event.session_id} | {event.message}{raw_message}"
-        )
+        self.event_logged.emit(self._format_engine_event("incoming", event))
 
     @Slot(object)
     def _on_system_message(self, event_payload: object) -> None:
         event = cast(EngineMessageEvent, event_payload)
-        raw_message = (
-            f" | {self._render_message_for_editor(event.raw_message)}"
-            if event.raw_message
-            else ""
-        )
-        self.event_logged.emit(
-            f"[session] {event.session_id} | {event.message}{raw_message}"
-        )
+        self.event_logged.emit(self._format_engine_event("session", event))
 
     @Slot(object)
     def _on_engine_error(self, error_payload: object) -> None:

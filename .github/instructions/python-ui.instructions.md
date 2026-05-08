@@ -20,7 +20,7 @@ Each file under `src/ui/` owns exactly one primary component:
 |------|-----------|--------|
 | `src/ui/main_window.py` | `MainWindow` — `QMainWindow` shell, menu bar, splitters, status bar | ☑ complete |
 | `src/ui/session_widget.py` | `SessionListWidget` — left-pane session list, status indicators, context menu | ☑ complete |
-| `src/ui/order_panel.py` | `SendMessageTab` + `ReplayTab` — right-panel tabbed workspace | ◐ partial (`SendMessageTab` complete, `ReplayTab` pending) |
+| `src/ui/order_panel.py` | `SendMessageTab` + `ReplayTab` — right-panel tabbed workspace | ☑ complete |
 | `src/ui/message_log.py` | `EventsViewer` — lower log panel, colour coding, filter bar, split/grid modes | ☑ complete |
 | `src/ui/controller.py` | `AppController` — wires all widget signals to `FIXEngineService` | ☑ complete |
 
@@ -110,19 +110,19 @@ an item done unless the implementation appears to satisfy the written criteria.
   - window has `OK` close action
   - handles long values without breaking layout
   - safe to populate with mock data in first version
-- [ ] 8. `ReplayTab` — replay controls
+- [x] 8. `ReplayTab` — replay controls
   - file picker / path field for replay log file
   - controls for sequence range, rate, send count, optional timestamps toggle
   - buttons for `Play`, `Pause`, `Stop`, `Next`
   - speed control present
   - lower edge integrates with events viewer / status updates via signals
-- [ ] 9. `TableViewEditor` — editable tag grid
+- [x] 9. `TableViewEditor` — editable tag grid
   - table supports tag rows with add / remove actions
   - columns show tag number, human-readable name, value
   - opening via F4 / context-menu hook from send editor is wired or stubbed
   - saving pushes reconstructed message back into `SendMessageTab`
   - repeating-group support may be simplified in v1 but structure must allow it
-- [ ] 10. `TestScenariosTab` — scenario runner surface
+- [x] 10. `TestScenariosTab` — scenario runner surface
   - table includes `Action`, `Test Scenario Name`, `Session`, `Details`
   - top-level button for `Create Test Scenario`
   - row action supports placeholder `Run`, later `Cancel` / `Continue`

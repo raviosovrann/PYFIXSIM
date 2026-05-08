@@ -63,7 +63,7 @@ class SessionLifecycle(Protocol):
 
     def connect(self) -> None: ...
 
-    def logon(self) -> None: ...
+    def logon(self) -> simplefix.FixMessage | None: ...
 
     def close(self, reason: str | None = None) -> None: ...
 
@@ -96,6 +96,8 @@ class FIXEngineService:
         self._lock = threading.Lock()
         self._active_config: SessionConfig | None = None
         self._active_session: SessionLifecycle | None = None
+        self._heartbeat_stop_event = threading.Event()
+        self._heartbeat_thread: threading.Thread | None = None
         self._state_change_handlers: list[StateChangeHandler] = []
         self._inbound_message_handlers: list[MessageHandler] = []
         self._outbound_message_handlers: list[MessageHandler] = []
@@ -153,6 +155,7 @@ class FIXEngineService:
         config: SessionConfig | Mapping[str, object],
     ) -> SessionLifecycle:
         """Create and store the active session without opening the network connection."""
+        self._stop_heartbeat_loop()
         session_config = self._coerce_config(config)
         session = self._session_factory(session_config)
         self._attach_session_handlers(session)
@@ -185,11 +188,15 @@ class FIXEngineService:
                 )
 
             if session.state is SessionState.CONNECTED:
-                session.logon()
+                logon_message = session.logon()
                 self._emit_outbound_message(
                     session.config,
                     "Sent Logon",
-                    raw_message="35=A",
+                    raw_message=(
+                        self._encode_fix_message(logon_message)
+                        if logon_message is not None
+                        else "35=A"
+                    ),
                 )
                 self._emit_state_change(session.state)
 
@@ -198,6 +205,8 @@ class FIXEngineService:
                     "Session failed to reach ACTIVE state, "
                     f"current state is {session.state.name}"
                 )
+
+            self._start_heartbeat_loop(session)
         except (FIXEngineServiceError, FIXSessionError) as exc:
             self._emit_error(exc)
             raise
@@ -206,6 +215,7 @@ class FIXEngineService:
 
     def close_session(self, reason: str | None = "Client requested shutdown") -> None:
         """Gracefully close the active session, emitting logout and state hooks."""
+        self._stop_heartbeat_loop()
         try:
             session = self._require_active_session()
             should_emit_logout = session.state in {
@@ -335,6 +345,67 @@ class FIXEngineService:
             execution_report,
         )
         return execution_report
+
+    def _start_heartbeat_loop(self, session: SessionLifecycle) -> None:
+        heartbeat_interval = session.config.heartbeat_interval
+        if heartbeat_interval <= 0:
+            return
+
+        self._stop_heartbeat_loop()
+        self._heartbeat_stop_event.clear()
+        heartbeat_thread = threading.Thread(
+            target=self._run_heartbeat_loop,
+            args=(session, heartbeat_interval),
+            name=(
+                "fix-heartbeat-"
+                f"{session.config.sender_comp_id}-{session.config.target_comp_id}"
+            ),
+            daemon=True,
+        )
+        with self._lock:
+            self._heartbeat_thread = heartbeat_thread
+        heartbeat_thread.start()
+
+    def _stop_heartbeat_loop(self) -> None:
+        self._heartbeat_stop_event.set()
+        with self._lock:
+            heartbeat_thread = self._heartbeat_thread
+            self._heartbeat_thread = None
+
+        if (
+            heartbeat_thread is not None
+            and heartbeat_thread is not threading.current_thread()
+        ):
+            heartbeat_thread.join(timeout=0.2)
+
+    def _run_heartbeat_loop(
+        self,
+        session: SessionLifecycle,
+        heartbeat_interval: int,
+    ) -> None:
+        while not self._heartbeat_stop_event.wait(heartbeat_interval):
+            with self._lock:
+                active_session = self._active_session
+
+            if active_session is not session:
+                return
+
+            if session.state is not SessionState.ACTIVE:
+                continue
+
+            try:
+                heartbeat_message = session.send_heartbeat()
+            except FIXSessionError as exc:
+                if self._heartbeat_stop_event.is_set():
+                    return
+                self._emit_error(exc)
+                return
+
+            self._emit_outbound_message(
+                session.config,
+                "Sent Heartbeat",
+                raw_message=self._encode_fix_message(heartbeat_message),
+            )
 
     def _require_active_session(self) -> SessionLifecycle:
         with self._lock:

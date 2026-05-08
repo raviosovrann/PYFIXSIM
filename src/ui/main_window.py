@@ -7,28 +7,21 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QDoubleSpinBox,
-    QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMainWindow,
     QMessageBox,
-    QPlainTextEdit,
-    QPushButton,
     QSplitter,
-    QSpinBox,
-    QStatusBar,
     QTabWidget,
-    QVBoxLayout,
+    QStatusBar,
     QWidget,
 )
 
 from src.ui.create_session_dialog import CreateSessionDialog
 from src.ui.controller import AppController
 from src.ui.message_log import EventsViewer
-from src.ui.order_panel import SendMessageTab
+from src.ui.order_panel import ReplayTab, SendMessageTab
 from src.ui.session_widget import SessionListEntry, SessionListWidget
+from src.ui.test_scenarios_tab import TestScenariosTab
 from src.ui.theme import get_app_stylesheet
 
 if TYPE_CHECKING:
@@ -79,6 +72,14 @@ class MainWindow(QMainWindow):
     keep_logs_toggled = Signal(
         bool
     )  # emitted when the Events Viewer keep-logs setting changes
+    replay_browse_requested = Signal()  # emitted when replay log browsing is requested
+    replay_play_requested = Signal()  # emitted when replay should begin
+    replay_pause_requested = Signal()  # emitted when replay should pause
+    replay_stop_requested = Signal()  # emitted when replay should stop
+    replay_next_requested = Signal()  # emitted when replay should advance one message
+    replay_filters_changed = Signal()  # emitted when replay filters change
+    create_test_scenario_requested = Signal()  # emitted when a new scenario is requested
+    run_test_scenario_requested = Signal(str)  # emitted when a scenario run is requested
 
     def __init__(
         self,
@@ -98,6 +99,8 @@ class MainWindow(QMainWindow):
 
         self.session_list_widget = SessionListWidget(self)
         self.send_message_tab = SendMessageTab(self)
+        self.replay_tab = ReplayTab(self)
+        self.test_scenarios_tab = TestScenariosTab(self)
         self.events_viewer_panel = EventsViewer(self)
         self.workspace_tabs = QTabWidget(self)
         self.events_viewer = self.events_viewer_panel.log_view()
@@ -110,6 +113,8 @@ class MainWindow(QMainWindow):
         self._build_status_bar()
         self._wire_session_widget()
         self._wire_send_message_tab()
+        self._wire_replay_tab()
+        self._wire_test_scenarios_tab()
         self._wire_events_viewer_panel()
         self._sync_send_message_sessions()
         self.create_fix_session_requested.connect(self._show_create_session_dialog)
@@ -306,103 +311,9 @@ class MainWindow(QMainWindow):
 
     def _build_workspace_tabs(self) -> QWidget:
         self.workspace_tabs.addTab(self.send_message_tab, "Send Message")
-        self.workspace_tabs.addTab(self._build_replay_tab(), "Replay")
-        self.workspace_tabs.addTab(self._build_test_scenarios_tab(), "Test Scenarios")
+        self.workspace_tabs.addTab(self.replay_tab, "Replay")
+        self.workspace_tabs.addTab(self.test_scenarios_tab, "Test Scenarios")
         return self.workspace_tabs
-
-    def _build_replay_tab(self) -> QWidget:
-        tab = QWidget(self)
-        root = QVBoxLayout(tab)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
-
-        file_row = QHBoxLayout()
-        file_row.setSpacing(8)
-        file_row.addWidget(QLabel("Log file:", tab))
-        file_path = QLineEdit(tab)
-        file_path.setPlaceholderText("Select replay log file")
-        file_row.addWidget(file_path, 1)
-
-        browse_button = QPushButton("...", tab)
-        browse_button.setEnabled(False)
-        file_row.addWidget(browse_button)
-
-        filter_row = QHBoxLayout()
-        filter_row.setSpacing(8)
-        filter_row.addWidget(QLabel("From:", tab))
-        from_spin = QSpinBox(tab)
-        from_spin.setRange(0, 999999)
-        filter_row.addWidget(from_spin)
-        filter_row.addWidget(QLabel("To:", tab))
-        to_spin = QSpinBox(tab)
-        to_spin.setRange(0, 999999)
-        filter_row.addWidget(to_spin)
-        filter_row.addWidget(QLabel("Message type:", tab))
-        filter_row.addWidget(QLineEdit(tab), 1)
-        filter_row.addWidget(QLabel("Rate (msg/sec):", tab))
-        filter_row.addWidget(QDoubleSpinBox(tab))
-        filter_row.addWidget(QLabel("Send count:", tab))
-        send_count = QSpinBox(tab)
-        send_count.setRange(1, 9999)
-        send_count.setValue(1)
-        filter_row.addWidget(send_count)
-
-        options_row = QHBoxLayout()
-        options_row.setSpacing(8)
-        use_timestamps = QCheckBox("Use timestamps", tab)
-        use_timestamps.setChecked(True)
-        options_row.addWidget(use_timestamps)
-        options_row.addWidget(QLabel("Speed:", tab))
-        speed_spin = QDoubleSpinBox(tab)
-        speed_spin.setRange(0.1, 100.0)
-        speed_spin.setValue(1.0)
-        options_row.addWidget(speed_spin)
-        options_row.addStretch()
-        for title in ("Play", "Pause", "Stop", "Next"):
-            button = QPushButton(title, tab)
-            button.setEnabled(False)
-            options_row.addWidget(button)
-
-        placeholder = QLabel(
-            "Replay transport wiring is intentionally stubbed until ReplayTab is built.",
-            tab,
-        )
-        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        root.addLayout(file_row)
-        root.addLayout(filter_row)
-        root.addWidget(placeholder, 1)
-        root.addLayout(options_row)
-
-        return tab
-
-    def _build_test_scenarios_tab(self) -> QWidget:
-        tab = QWidget(self)
-        root = QHBoxLayout(tab)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
-
-        placeholder = QPlainTextEdit(tab)
-        placeholder.setReadOnly(True)
-        placeholder.setPlainText(
-            "Action | Test Scenario Name | Session | Details\n"
-            "------------------------------------------------\n"
-            "Run    | Order happy path    | FIX44   | Not Started\n\n"
-            "This placeholder keeps the Test Scenarios tab visible while the dedicated\n"
-            "widget and designer dialogs are built in later checklist steps."
-        )
-
-        button_column = QVBoxLayout()
-        button_column.setSpacing(6)
-        create_button = QPushButton("Create Test Scenario", tab)
-        create_button.setEnabled(False)
-        button_column.addWidget(create_button)
-        button_column.addStretch()
-
-        root.addWidget(placeholder, 1)
-        root.addLayout(button_column)
-
-        return tab
 
     def _build_events_viewer_panel(self) -> QWidget:
         return self.events_viewer_panel
@@ -450,6 +361,22 @@ class MainWindow(QMainWindow):
         )
         self.send_message_tab.search_text_changed.connect(
             self._on_send_message_search_text_changed
+        )
+
+    def _wire_replay_tab(self) -> None:
+        self.replay_tab.browse_requested.connect(self._on_replay_browse_requested)
+        self.replay_tab.play_requested.connect(self._on_replay_play_requested)
+        self.replay_tab.pause_requested.connect(self._on_replay_pause_requested)
+        self.replay_tab.stop_requested.connect(self._on_replay_stop_requested)
+        self.replay_tab.next_requested.connect(self._on_replay_next_requested)
+        self.replay_tab.filters_changed.connect(self._on_replay_filters_changed)
+
+    def _wire_test_scenarios_tab(self) -> None:
+        self.test_scenarios_tab.create_requested.connect(
+            self._on_create_test_scenario_requested
+        )
+        self.test_scenarios_tab.scenario_run_requested.connect(
+            self._on_run_test_scenario_requested
         )
 
     def _wire_events_viewer_panel(self) -> None:
@@ -641,6 +568,49 @@ class MainWindow(QMainWindow):
         if not search_text:
             return
         self.set_status_message(f"Searching Send Message tab for: {search_text}")
+
+    @Slot()
+    def _on_replay_browse_requested(self) -> None:
+        self.workspace_tabs.setCurrentWidget(self.replay_tab)
+        self.set_status_message("Replay log selection requested")
+        self.replay_browse_requested.emit()
+
+    @Slot()
+    def _on_replay_play_requested(self) -> None:
+        self.workspace_tabs.setCurrentWidget(self.replay_tab)
+        self.set_status_message("Replay play requested")
+        self.replay_play_requested.emit()
+
+    @Slot()
+    def _on_replay_pause_requested(self) -> None:
+        self.set_status_message("Replay pause requested")
+        self.replay_pause_requested.emit()
+
+    @Slot()
+    def _on_replay_stop_requested(self) -> None:
+        self.set_status_message("Replay stop requested")
+        self.replay_stop_requested.emit()
+
+    @Slot()
+    def _on_replay_next_requested(self) -> None:
+        self.set_status_message("Replay next requested")
+        self.replay_next_requested.emit()
+
+    @Slot()
+    def _on_replay_filters_changed(self) -> None:
+        self.replay_filters_changed.emit()
+
+    @Slot()
+    def _on_create_test_scenario_requested(self) -> None:
+        self.workspace_tabs.setCurrentWidget(self.test_scenarios_tab)
+        self.set_status_message("Create Test Scenario requested")
+        self.create_test_scenario_requested.emit()
+
+    @Slot(str)
+    def _on_run_test_scenario_requested(self, scenario_name: str) -> None:
+        self.workspace_tabs.setCurrentWidget(self.test_scenarios_tab)
+        self.set_status_message(f"Run Test Scenario requested: {scenario_name}")
+        self.run_test_scenario_requested.emit(scenario_name)
 
     @Slot()
     def _on_events_viewer_filters_changed(self) -> None:

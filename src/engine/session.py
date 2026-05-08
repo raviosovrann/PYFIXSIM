@@ -141,8 +141,8 @@ class FIXSession:
 
         receive_thread.start()
 
-    def logon(self) -> None:
-        """Send a FIX Logon message and mark the session active on success."""
+    def logon(self) -> simplefix.FixMessage:
+        """Send a FIX Logon message, mark the session active, and return the payload."""
         with self._lock:
             if self._socket is None or self._state != SessionState.CONNECTED:
                 raise SessionStateError("FIX session must be connected before logon")
@@ -154,6 +154,8 @@ class FIXSession:
         with self._lock:
             if self._socket is not None:
                 self._transition_state_locked(SessionState.ACTIVE)
+
+        return logon_message
 
     def logout(self, reason: str | None = None) -> None:
         """Send a FIX Logout message without closing the underlying socket."""
